@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Header } from "@/components/header";
 import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
@@ -9,7 +9,14 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useSound } from "@/hooks/use-sound";
 import { useToast } from "@/hooks/use-toast";
 import { usePin } from "@/hooks/use-pin";
-import { useGetInbox, getGetInboxQueryKey } from "@workspace/api-client-react";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import {
+  useGetInbox,
+  useMarkMessageRead,
+  getGetInboxQueryKey,
+  getGetEmailStatsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface InboxEntry {
   email: string;
@@ -25,9 +32,11 @@ export default function Home() {
 
   const { playChime } = useSound();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const prevTotalRef = useRef<number>(0);
 
   const { hasPin, isUnlocked, setupPin, removePin, verifyPin, lock } = usePin();
+  const markReadMutation = useMarkMessageRead();
 
   const setActiveEmail = useCallback((email: string) => {
     setActiveEmailRaw(email);
@@ -51,7 +60,7 @@ export default function Home() {
     setActiveEmailRaw(email);
   }, [setActiveEmailRaw]);
 
-  const { data: inbox, isLoading } = useGetInbox(
+  const { data: inbox, isLoading, refetch: refetchInbox } = useGetInbox(
     { email: activeEmail! },
     {
       query: {
@@ -62,6 +71,15 @@ export default function Home() {
     }
   );
 
+  const unreadCount = useMemo(() => inbox?.messages?.filter((m) => !m.isRead).length ?? 0, [inbox]);
+
+  // Tab title badge
+  useEffect(() => {
+    document.title = unreadCount > 0 ? `(${unreadCount}) TempMail` : "TempMail";
+    return () => { document.title = "TempMail"; };
+  }, [unreadCount]);
+
+  // New mail notifications
   useEffect(() => {
     if (inbox && inbox.total > prevTotalRef.current) {
       if (prevTotalRef.current > 0) {
@@ -74,10 +92,44 @@ export default function Home() {
     }
   }, [inbox?.total, playChime, toast]);
 
+  // Reset selected message when email changes
   useEffect(() => {
     setSelectedMessageId(null);
     prevTotalRef.current = 0;
   }, [activeEmail]);
+
+  const handleRefreshInbox = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email: activeEmail! }) });
+    refetchInbox();
+  }, [queryClient, activeEmail, refetchInbox]);
+
+  const handleMarkAllRead = useCallback(() => {
+    if (!activeEmail || !inbox?.messages) return;
+    const unread = inbox.messages.filter((m) => !m.isRead);
+    if (unread.length === 0) return;
+    unread.forEach((m) => {
+      markReadMutation.mutate({ data: { id: m.id, email: activeEmail } });
+    });
+    setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email: activeEmail }) });
+      queryClient.invalidateQueries({ queryKey: getGetEmailStatsQueryKey({ email: activeEmail }) });
+    }, 200);
+    toast({ title: `${unread.length} pesan ditandai dibaca` });
+  }, [activeEmail, inbox?.messages, markReadMutation, queryClient, toast]);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts(
+    useMemo(() => ({
+      "r": () => handleRefreshInbox(),
+      "ctrl+shift+c": () => {
+        if (activeEmail) {
+          navigator.clipboard.writeText(activeEmail);
+          toast({ title: "Disalin!", description: activeEmail, duration: 2000 });
+        }
+      },
+      "escape": () => setSelectedMessageId(null),
+    }), [handleRefreshInbox, activeEmail, toast])
+  );
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
@@ -121,6 +173,8 @@ export default function Home() {
               isLoading={isLoading && !!activeEmail}
               selectedMessageId={selectedMessageId}
               onSelectMessage={setSelectedMessageId}
+              onRefresh={handleRefreshInbox}
+              onMarkAllRead={handleMarkAllRead}
             />
           </div>
 
@@ -143,6 +197,16 @@ export default function Home() {
                 <p className="text-muted-foreground mt-2 max-w-sm text-sm">
                   Pilih pesan dari daftar untuk membacanya. Email sementara Anda aktif dan siap menerima pesan.
                 </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3 text-xs text-muted-foreground">
+                  <kbd className="px-2 py-1 rounded bg-muted border border-border font-mono">R</kbd>
+                  <span>Refresh inbox</span>
+                  <span className="mx-2">·</span>
+                  <kbd className="px-2 py-1 rounded bg-muted border border-border font-mono">Ctrl+Shift+C</kbd>
+                  <span>Salin email</span>
+                  <span className="mx-2">·</span>
+                  <kbd className="px-2 py-1 rounded bg-muted border border-border font-mono">Esc</kbd>
+                  <span>Tutup pesan</span>
+                </div>
               </div>
             )}
           </div>

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   Copy, RefreshCw, Trash2, Clock, Inbox, ChevronDown, Mail,
-  Timer, Pencil, Check, X, Lock, Unlock, Shield, ShieldOff, KeyRound, Minus
+  Timer, Pencil, Check, X, Lock, Unlock, Shield, ShieldOff, KeyRound, Minus, QrCode
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { QRCodeSVG } from "qrcode.react";
 import {
   useGenerateEmail,
   useGetAvailableDomains,
@@ -75,6 +76,7 @@ export function EmailPane({
 
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
 
   // PIN dialog state
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
@@ -105,7 +107,11 @@ export function EmailPane({
   useEffect(() => {
     if (generatedEmailData?.email) {
       setActiveEmail(generatedEmailData.email);
-      toast({ title: "Email baru dibuat", description: generatedEmailData.email });
+      navigator.clipboard.writeText(generatedEmailData.email).catch(() => {});
+      toast({
+        title: "Email baru dibuat & disalin!",
+        description: generatedEmailData.email,
+      });
     }
   }, [generatedEmailData?.email]);
 
@@ -272,16 +278,29 @@ export function EmailPane({
               ) : (
                 <Skeleton className="h-7 w-full max-w-[220px]" />
               )}
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={copyToClipboard}
-                disabled={!activeEmail}
-                className="shrink-0 ml-2 h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
-                data-testid="button-copy-email"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1 ml-2 shrink-0">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={copyToClipboard}
+                  disabled={!activeEmail}
+                  className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
+                  data-testid="button-copy-email"
+                  title="Salin alamat email (Ctrl+Shift+C)"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setQrOpen(true)}
+                  disabled={!activeEmail}
+                  className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
+                  title="Tampilkan QR Code"
+                >
+                  <QrCode className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -546,6 +565,44 @@ export function EmailPane({
           )}
         </CardContent>
       </Card>
+
+      {/* QR Code Dialog */}
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-primary" />
+              Scan QR Code
+            </DialogTitle>
+            <DialogDescription>
+              Scan dengan kamera HP untuk menyalin alamat email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-2">
+            {activeEmail && (
+              <div className="p-4 bg-white rounded-xl shadow-inner border border-border">
+                <QRCodeSVG
+                  value={activeEmail}
+                  size={200}
+                  level="M"
+                  includeMargin={false}
+                />
+              </div>
+            )}
+            <p className="text-xs font-mono text-center text-muted-foreground break-all px-2">
+              {activeEmail}
+            </p>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => { copyToClipboard(); setQrOpen(false); }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Salin Alamat
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* PIN Setup Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={(open) => { setPinDialogOpen(open); if (!open) { setPinInput(""); setPinConfirm(""); setPinStep("enter"); } }}>
