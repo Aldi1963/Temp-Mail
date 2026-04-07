@@ -16,6 +16,39 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
+## Artifacts
+
+### TempMail (artifacts/tempmail)
+A full-featured temporary email service similar to temp-mail.org.
+
+**Features:**
+- Auto-generate random disposable email addresses with domain selection
+- Inbox with auto-refresh every 5 seconds (polling)
+- Email viewer with HTML/text body rendering (sandboxed iframe)
+- Mark-as-read on message open
+- Filter by All / Unread / Read, search by sender/subject
+- Stats panel: total messages, unread count, expiry countdown timer
+- Clear inbox with confirmation dialog
+- New mail sound notification (Web Audio API)
+- Dark mode toggle (persists in localStorage)
+- Responsive design (mobile + desktop)
+
+**Frontend:** React + Vite at `/` (artifacts/tempmail)
+**Backend:** Express API at `/api/email/...`
+
+**API Routes:**
+- `GET /api/email/generate` — Generate a new temp email
+- `GET /api/email/inbox?email=` — Get inbox messages
+- `GET /api/email/message?id=&email=` — Get full message
+- `PATCH /api/email/message/read` — Mark message as read
+- `DELETE /api/email/reset?email=` — Clear inbox
+- `GET /api/email/domains` — List available domains
+- `GET /api/email/stats?email=` — Get inbox stats
+
+**Domains available:** tmpmail.dev, quickmail.io, throwaway.net
+
+**Email TTL:** 10 minutes (auto-expires from DB)
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages

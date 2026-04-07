@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: TempMail API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: email
+    description: Temporary email operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,180 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /email/generate:
+    get:
+      operationId: generateEmail
+      tags: [email]
+      summary: Generate a temporary email address
+      parameters:
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional custom username
+        - name: domain
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional domain selection
+      responses:
+        "200":
+          description: Generated email address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedEmail"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /email/inbox:
+    get:
+      operationId: getInbox
+      tags: [email]
+      summary: Get inbox for a temporary email address
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The temporary email address
+      responses:
+        "200":
+          description: List of messages in the inbox
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /email/message:
+    get:
+      operationId: getMessage
+      tags: [email]
+      summary: Get a specific email message
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The message ID
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The email address owning this message
+      responses:
+        "200":
+          description: Full email message details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailMessage"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /email/message/read:
+    patch:
+      operationId: markMessageRead
+      tags: [email]
+      summary: Mark a message as read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkReadRequest"
+      responses:
+        "200":
+          description: Message marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /email/reset:
+    delete:
+      operationId: resetInbox
+      tags: [email]
+      summary: Delete all messages in an inbox
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The email address to reset
+      responses:
+        "200":
+          description: Inbox deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /email/domains:
+    get:
+      operationId: getAvailableDomains
+      tags: [email]
+      summary: Get list of available email domains
+      responses:
+        "200":
+          description: List of supported domains
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainsResponse"
+  /email/stats:
+    get:
+      operationId: getEmailStats
+      tags: [email]
+      summary: Get stats for a temporary email address (total, read, unread, expiry)
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The temporary email address
+      responses:
+        "200":
+          description: Email address statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailStats"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +210,193 @@ components:
       required:
         - status
 
+    GeneratedEmail:
+      type: object
+      properties:
+        email:
+          type: string
+          description: The generated email address
+        username:
+          type: string
+          description: Username part of the email
+        domain:
+          type: string
+          description: Domain part of the email
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the email session expires
+        createdAt:
+          type: string
+          format: date-time
+          description: When the email was generated
+      required:
+        - email
+        - username
+        - domain
+        - expiresAt
+        - createdAt
+
+    EmailMessageSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        from:
+          type: string
+        subject:
+          type: string
+        preview:
+          type: string
+          description: Short text preview of the email body
+        receivedAt:
+          type: string
+          format: date-time
+        isRead:
+          type: boolean
+        hasAttachments:
+          type: boolean
+      required:
+        - id
+        - from
+        - subject
+        - preview
+        - receivedAt
+        - isRead
+        - hasAttachments
+
+    InboxResponse:
+      type: object
+      properties:
+        email:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailMessageSummary"
+        total:
+          type: integer
+        unreadCount:
+          type: integer
+      required:
+        - email
+        - messages
+        - total
+        - unreadCount
+
+    EmailMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        subject:
+          type: string
+        textBody:
+          type: string
+        htmlBody:
+          type: string
+        receivedAt:
+          type: string
+          format: date-time
+        isRead:
+          type: boolean
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+      required:
+        - id
+        - email
+        - from
+        - to
+        - subject
+        - receivedAt
+        - isRead
+        - attachments
+
+    Attachment:
+      type: object
+      properties:
+        filename:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+      required:
+        - filename
+        - contentType
+        - size
+
+    MarkReadRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+      required:
+        - id
+        - email
+
+    DomainsResponse:
+      type: object
+      properties:
+        domains:
+          type: array
+          items:
+            type: string
+      required:
+        - domains
+
+    EmailStats:
+      type: object
+      properties:
+        email:
+          type: string
+        totalMessages:
+          type: integer
+        readCount:
+          type: integer
+        unreadCount:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
+        isExpired:
+          type: boolean
+      required:
+        - email
+        - totalMessages
+        - readCount
+        - unreadCount
+        - expiresAt
+        - isExpired
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message

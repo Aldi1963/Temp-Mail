@@ -1,0 +1,183 @@
+Buatkan aplikasi web temporary email (temp mail) full-feature menggunakan Cloudflare sebagai backend dan cPanel sebagai hosting frontend.
+
+TUJUAN:
+Membuat layanan temp mail seperti temp-mail.org dengan backend serverless (Cloudflare) dan frontend ringan yang bisa diupload ke cPanel.
+
+====================================
+🌐 ARSITEKTUR
+====================================
+
+- Frontend:
+  - HTML + Tailwind CSS + JavaScript
+  - Dihost di cPanel (public_html)
+
+- Backend:
+  - Cloudflare Workers
+  - Cloudflare Email Routing
+  - Cloudflare KV / D1 (database)
+  - Durable Objects (opsional realtime)
+
+====================================
+🌐 FITUR UTAMA
+====================================
+
+1. GENERATE EMAIL
+- Generate email random (contoh: ab12@domain.com)
+- Custom username opsional
+- Multi domain support
+- Simpan email di localStorage
+
+2. INBOX EMAIL
+- Ambil email dari API Cloudflare
+- Auto refresh setiap 5 detik (fallback polling)
+- Jika memungkinkan gunakan WebSocket (Durable Objects)
+- Tampilkan status read/unread
+
+3. EMAIL VIEWER
+- Tampilkan:
+  - from
+  - subject
+  - body (text & HTML)
+  - attachments (jika ada)
+
+4. AUTO DELETE
+- Email expire otomatis (10 menit)
+- Dikelola oleh backend Cloudflare (KV TTL / cron)
+
+5. COPY & UX
+- Copy email button
+- Notifikasi email masuk
+- Sound alert opsional
+
+6. SEARCH & FILTER
+- Search email
+- Filter unread/read
+
+7. SESSION USER
+- Gunakan localStorage untuk menyimpan email aktif user
+
+8. SECURITY
+- Validasi input
+- Sanitasi HTML
+- Rate limiting di Cloudflare
+
+====================================
+⚙️ BACKEND (CLOUDFLARE)
+====================================
+
+Gunakan:
+
+- Cloudflare Workers
+- Email Routing (receive email)
+- KV atau D1 database
+- Durable Objects (untuk WebSocket realtime)
+
+====================================
+📡 EMAIL HANDLER
+====================================
+
+Gunakan event:
+- email(message, env, ctx)
+
+Parsing:
+- from
+- to
+- subject
+- body (text/html)
+
+Simpan ke KV:
+
+Key:
+email:{address}:{timestamp}
+
+Value:
+{
+  from,
+  subject,
+  text,
+  html,
+  created_at,
+  expires_at
+}
+
+====================================
+🔌 API ENDPOINT (WORKERS)
+====================================
+
+GET /generate
+→ generate email baru
+
+GET /inbox?email=
+→ ambil semua email
+
+GET /message?id=
+→ detail email
+
+DELETE /reset?email=
+→ hapus inbox
+
+====================================
+⚡ REALTIME (OPSIONAL)
+====================================
+
+- Gunakan Durable Objects untuk WebSocket
+- Broadcast email baru ke client
+
+Jika tidak tersedia:
+→ fallback ke polling 5 detik
+
+====================================
+🎨 FRONTEND (CPANEL)
+====================================
+
+- Single page app (SPA)
+- Fetch API ke Cloudflare Worker
+- Responsive design
+- Dark mode toggle
+
+====================================
+📁 STRUKTUR PROJECT
+====================================
+
+/frontend (upload ke cPanel)
+  index.html
+  app.js
+  style.css
+
+/backend (Cloudflare Worker)
+  worker.js
+  routes.js
+  emailHandler.js
+  websocket.js
+
+====================================
+🌍 DEPLOYMENT
+====================================
+
+FRONTEND:
+- Upload ke cPanel (public_html)
+
+BACKEND:
+- Deploy ke Cloudflare Workers
+- Hubungkan domain email routing
+
+====================================
+🧪 TESTING
+====================================
+
+- Simulasikan email masuk
+- Logging Worker
+- Error handling lengkap
+
+====================================
+🚀 OUTPUT YANG DIHARAPKAN
+====================================
+
+- Kode lengkap frontend (HTML + JS)
+- Kode lengkap Cloudflare Worker
+- Contoh wrangler.toml
+- Cara setup Email Routing Cloudflare
+- Cara connect frontend ke API Worker
+- Dokumentasi singkat penggunaan
+
+Gunakan clean code, modular architecture, dan production-ready structure.
