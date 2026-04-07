@@ -58,17 +58,21 @@ router.get("/generate", async (req, res) => {
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
 
   const existing = await db.select().from(emailAddressesTable).where(eq(emailAddressesTable.email, email)).limit(1);
+  const userId = req.session?.userId ?? null;
 
   if (existing.length === 0) {
     await db.insert(emailAddressesTable).values({
       email,
       username: selectedUsername,
       domain: selectedDomain,
+      userId,
       createdAt: now,
       expiresAt,
     });
   } else {
-    await db.update(emailAddressesTable).set({ expiresAt }).where(eq(emailAddressesTable.email, email));
+    const updateData: Record<string, unknown> = { expiresAt };
+    if (userId && !existing[0].userId) updateData.userId = userId;
+    await db.update(emailAddressesTable).set(updateData).where(eq(emailAddressesTable.email, email));
   }
 
   res.json({

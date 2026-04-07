@@ -49,6 +49,34 @@ A full-featured temporary email service similar to temp-mail.org.
 
 **Email TTL:** 10 minutes (auto-expires from DB)
 
+**Auth & Dashboard features:**
+- User registration & login with bcrypt password hashing
+- Session-based auth (express-session + connect-pg-simple, stored in `user_sessions` PostgreSQL table)
+- First registered user auto-becomes admin
+- Header shows user dropdown (Dashboard, Admin panel, Logout) when logged in
+- `/login` and `/register` pages
+- `/dashboard` — personal stats (total emails, messages, active) + email history
+- `/admin` — Admin panel with tabs: Settings, Domain management, User management, Statistics
+- Protected routes: `/dashboard` requires auth, `/admin` requires admin role
+
+**Auth API Routes (not in OpenAPI spec, use fetch with credentials: "include"):**
+- `POST /api/auth/register` — `{email, password}` — create account, first user = admin
+- `POST /api/auth/login` — `{email, password}` — login
+- `POST /api/auth/logout` — logout
+- `GET /api/auth/me` — current user info
+- `GET /api/user/emails` — user's email history
+- `GET /api/user/stats` — user's usage stats
+- `GET /api/admin/stats` — system-wide stats (admin only)
+- `GET /api/admin/users` — list all users (admin only)
+- `PATCH /api/admin/users/:id/role` — change user role (admin only)
+- `DELETE /api/admin/users/:id` — delete user (admin only)
+- `GET /api/admin/settings` — get site settings (admin only)
+- `PUT /api/admin/settings` — save site settings (admin only)
+
+**DB Tables:** `users`, `site_settings`, `user_sessions` (session store), `email_addresses` (with userId FK), `messages`, `blocked_senders`
+
+**Session note:** `user_sessions` table is auto-created on API server startup via `ensureSessionTable()` in `index.ts`.
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
