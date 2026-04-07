@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  ArrowLeft, Mail, Users, Inbox, Settings, Globe,
+  Mail, Users, Inbox, Settings, Globe,
   Trash2, ShieldCheck, ShieldX, RefreshCw, Save, PlusCircle, X,
-  BarChart2, ToggleLeft, ToggleRight
+  BarChart2, ToggleLeft, ToggleRight, LayoutDashboard, LogOut,
+  Menu, Megaphone, Palette, Zap, Tag, Info, AlertTriangle, CheckCircle,
+  Home, ChevronRight, Image, FileText, Search
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,43 +13,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
-interface AdminStats {
-  totalUsers: number;
-  totalEmails: number;
-  totalMessages: number;
-}
+type Section = "overview" | "general" | "web" | "domains" | "users" | "stats";
 
-interface AdminUser {
-  id: number;
-  email: string;
-  role: string;
-  createdAt: string;
-}
-
+interface AdminStats { totalUsers: number; totalEmails: number; totalMessages: number; }
+interface AdminUser { id: number; email: string; role: string; createdAt: string; }
 interface SiteSettings {
-  site_name: string;
-  default_ttl_minutes: string;
-  max_inboxes: string;
-  available_domains: string;
-  allow_registration: string;
-  maintenance_mode: string;
-  max_message_size_kb: string;
+  site_name: string; default_ttl_minutes: string; max_inboxes: string;
+  available_domains: string; allow_registration: string; maintenance_mode: string;
+  max_message_size_kb: string; site_description: string; site_logo_url: string;
+  meta_title: string; meta_keywords: string; footer_text: string;
+  require_login_to_generate: string; max_emails_per_day: string;
+  show_qr_by_default: string; auto_copy_on_generate: string;
+  announcement_enabled: string; announcement_text: string; announcement_type: string;
 }
 
 async function adminApi(path: string, opts?: RequestInit) {
@@ -61,16 +50,49 @@ async function adminApi(path: string, opts?: RequestInit) {
   return data;
 }
 
+const NAV = [
+  { id: "overview" as Section, icon: LayoutDashboard, label: "Ringkasan" },
+  { id: "general" as Section, icon: Settings, label: "Pengaturan Umum" },
+  { id: "web" as Section, icon: Palette, label: "Pengaturan Web" },
+  { id: "domains" as Section, icon: Globe, label: "Domain" },
+  { id: "users" as Section, icon: Users, label: "Pengguna" },
+  { id: "stats" as Section, icon: BarChart2, label: "Statistik" },
+];
+
+function ToggleRow({ label, desc, checked, onToggle }: {
+  label: string; desc: string; checked: boolean; onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-3 px-0">
+      <div className="flex-1 pr-4">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${checked ? "bg-primary" : "bg-input"}`}
+        role="switch"
+        aria-checked={checked}
+      >
+        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`} />
+      </button>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
+  const [active, setActive] = useState<Section>("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savingSettings, setSavingSettings] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editSettings, setEditSettings] = useState<Partial<SiteSettings>>({});
   const [newDomain, setNewDomain] = useState("");
 
@@ -88,343 +110,574 @@ export default function AdminPage() {
         adminApi("/api/admin/users"),
         adminApi("/api/admin/settings"),
       ]);
-      setStats(s);
-      setUsers(u);
-      setSettings(cfg);
-      setEditSettings(cfg);
+      setStats(s); setUsers(u); setSettings(cfg); setEditSettings(cfg);
     } catch (err: unknown) {
-      toast({ title: "Gagal memuat data admin", description: err instanceof Error ? err.message : "", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
+      toast({ title: "Gagal memuat data", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally { setLoading(false); }
   };
 
-  const handleSaveSettings = async () => {
-    setSavingSettings(true);
+  const saveSettings = async (partial?: Partial<SiteSettings>) => {
+    const payload = partial ?? editSettings;
+    setSaving(true);
     try {
-      await adminApi("/api/admin/settings", {
-        method: "PUT",
-        body: JSON.stringify(editSettings),
-      });
-      setSettings(editSettings as SiteSettings);
-      toast({ title: "Pengaturan berhasil disimpan" });
+      await adminApi("/api/admin/settings", { method: "PUT", body: JSON.stringify(payload) });
+      setSettings((prev) => ({ ...prev, ...payload } as SiteSettings));
+      if (!partial) setSettings(payload as SiteSettings);
+      toast({ title: "Pengaturan disimpan" });
     } catch (err: unknown) {
       toast({ title: "Gagal menyimpan", description: err instanceof Error ? err.message : "", variant: "destructive" });
-    } finally {
-      setSavingSettings(false);
-    }
+    } finally { setSaving(false); }
   };
 
-  const handleRoleChange = async (id: number, newRole: string) => {
+  const set = (key: keyof SiteSettings, val: string) =>
+    setEditSettings((p) => ({ ...p, [key]: val }));
+  const toggle = (key: keyof SiteSettings) =>
+    setEditSettings((p) => ({ ...p, [key]: p[key] === "true" ? "false" : "true" }));
+
+  const getDomains = (): string[] => {
+    try { return JSON.parse(editSettings.available_domains ?? "[]"); } catch { return []; }
+  };
+  const addDomain = () => {
+    const d = newDomain.trim().toLowerCase();
+    if (!d || !d.includes(".")) { toast({ title: "Domain tidak valid", variant: "destructive" }); return; }
+    const cur = getDomains();
+    if (cur.includes(d)) { toast({ title: "Domain sudah ada", variant: "destructive" }); return; }
+    set("available_domains", JSON.stringify([...cur, d]));
+    setNewDomain("");
+  };
+  const removeDomain = (d: string) => {
+    set("available_domains", JSON.stringify(getDomains().filter((x) => x !== d)));
+  };
+
+  const handleRoleChange = async (id: number, role: string) => {
     try {
-      await adminApi(`/api/admin/users/${id}/role`, {
-        method: "PATCH",
-        body: JSON.stringify({ role: newRole }),
-      });
-      setUsers((prev) => prev.map((u) => u.id === id ? { ...u, role: newRole } : u));
-      toast({ title: `Role diubah ke ${newRole}` });
-    } catch (err: unknown) {
-      toast({ title: "Gagal mengubah role", description: err instanceof Error ? err.message : "", variant: "destructive" });
-    }
+      await adminApi(`/api/admin/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) });
+      setUsers((p) => p.map((u) => u.id === id ? { ...u, role } : u));
+      toast({ title: `Role diubah ke ${role}` });
+    } catch (err: unknown) { toast({ title: "Gagal", description: err instanceof Error ? err.message : "", variant: "destructive" }); }
   };
-
   const handleDeleteUser = async (id: number) => {
     try {
       await adminApi(`/api/admin/users/${id}`, { method: "DELETE" });
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+      setUsers((p) => p.filter((u) => u.id !== id));
       toast({ title: "Pengguna dihapus" });
-    } catch (err: unknown) {
-      toast({ title: "Gagal menghapus", description: err instanceof Error ? err.message : "", variant: "destructive" });
-    }
-  };
-
-  const getDomains = (): string[] => {
-    try { return JSON.parse(editSettings.available_domains ?? "[]"); }
-    catch { return []; }
-  };
-
-  const addDomain = () => {
-    const d = newDomain.trim().toLowerCase();
-    if (!d || !d.includes(".")) {
-      toast({ title: "Domain tidak valid", variant: "destructive" });
-      return;
-    }
-    const current = getDomains();
-    if (current.includes(d)) {
-      toast({ title: "Domain sudah ada", variant: "destructive" });
-      return;
-    }
-    setEditSettings((prev) => ({ ...prev, available_domains: JSON.stringify([...current, d]) }));
-    setNewDomain("");
-  };
-
-  const removeDomain = (d: string) => {
-    const current = getDomains().filter((x) => x !== d);
-    setEditSettings((prev) => ({ ...prev, available_domains: JSON.stringify(current) }));
-  };
-
-  const toggleBool = (key: keyof SiteSettings) => {
-    const current = editSettings[key] === "true";
-    setEditSettings((prev) => ({ ...prev, [key]: current ? "false" : "true" }));
+    } catch (err: unknown) { toast({ title: "Gagal", description: err instanceof Error ? err.message : "", variant: "destructive" }); }
   };
 
   if (!user || user.role !== "admin") return null;
 
+  const navTo = (s: Section) => { setActive(s); setSidebarOpen(false); };
+
+  const Sidebar = () => (
+    <aside className="flex flex-col h-full bg-card border-r border-border">
+      {/* Brand */}
+      <div className="flex items-center gap-2.5 px-4 py-4 border-b border-border">
+        <div className="bg-primary/10 p-1.5 rounded-md text-primary shrink-0">
+          <ShieldCheck className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="font-bold text-sm leading-none">Panel Admin</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">TempMail</p>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+        {NAV.map((n) => (
+          <button
+            key={n.id}
+            onClick={() => navTo(n.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              active === n.id
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <n.icon className="h-4 w-4 shrink-0" />
+            {n.label}
+          </button>
+        ))}
+      </nav>
+
+      <Separator />
+
+      {/* User info + actions */}
+      <div className="p-3 space-y-2">
+        <Link href="/">
+          <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <Home className="h-4 w-4 shrink-0" />
+            Kembali ke Situs
+          </button>
+        </Link>
+        <Link href="/dashboard">
+          <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <LayoutDashboard className="h-4 w-4 shrink-0" />
+            Dashboard Saya
+          </button>
+        </Link>
+        <div className="px-3 py-2 rounded-lg bg-muted/50 flex items-center gap-2">
+          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <span className="text-xs font-bold text-primary">{user.email[0].toUpperCase()}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium truncate">{user.email}</p>
+            <Badge variant="default" className="text-[9px] h-4 px-1 mt-0.5">Admin</Badge>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={logout} title="Keluar">
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    </aside>
+  );
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto flex h-14 items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2 font-bold text-lg">
-              <div className="bg-primary/10 p-1.5 rounded-md text-primary">
-                <ShieldCheck className="h-5 w-5" />
+    <div className="min-h-screen bg-background flex">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex md:w-56 lg:w-60 shrink-0 flex-col fixed inset-y-0 left-0 z-40">
+        <Sidebar />
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-60 z-10">
+            <Sidebar />
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col md:ml-56 lg:ml-60">
+        {/* Top bar */}
+        <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border h-14 flex items-center px-4 gap-3">
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setSidebarOpen(true)}>
+            <Menu className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-1 text-sm text-muted-foreground flex-1 min-w-0">
+            <span className="hidden sm:inline">Admin</span>
+            <ChevronRight className="h-3 w-3 hidden sm:inline" />
+            <span className="font-medium text-foreground truncate">{NAV.find((n) => n.id === active)?.label}</span>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchAll}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </header>
+
+        <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto w-full space-y-6 pb-12">
+
+          {/* ── OVERVIEW ── */}
+          {active === "overview" && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold">Ringkasan</h1>
+                <p className="text-sm text-muted-foreground mt-1">Gambaran umum kondisi sistem TempMail.</p>
               </div>
-              Panel Admin
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchAll}>
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={logout}>
-              Keluar
-            </Button>
-          </div>
-        </div>
-      </header>
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { icon: Users, label: "Pengguna", value: stats?.totalUsers ?? 0, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/30" },
+                  { icon: Mail, label: "Email Dibuat", value: stats?.totalEmails ?? 0, color: "text-primary", bg: "bg-primary/10" },
+                  { icon: Inbox, label: "Pesan Masuk", value: stats?.totalMessages ?? 0, color: "text-green-600", bg: "bg-green-50 dark:bg-green-950/30" },
+                ].map((s) => (
+                  <Card key={s.label} className="border-border/50">
+                    <CardContent className="p-4">
+                      <div className={`${s.bg} w-9 h-9 rounded-lg flex items-center justify-center mb-3`}>
+                        <s.icon className={`h-5 w-5 ${s.color}`} />
+                      </div>
+                      {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
+                        <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                      )}
+                      <div className="text-xs text-muted-foreground">{s.label}</div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
-        {/* Overview Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { icon: Users, label: "Total Pengguna", value: stats?.totalUsers ?? 0, color: "text-violet-500" },
-            { icon: Mail, label: "Total Email", value: stats?.totalEmails ?? 0, color: "text-primary" },
-            { icon: Inbox, label: "Total Pesan", value: stats?.totalMessages ?? 0, color: "text-green-500" },
-          ].map((s) => (
-            <Card key={s.label} className="border-border/50">
-              <CardContent className="p-4 flex flex-col items-center text-center gap-1">
-                <s.icon className={`h-6 w-6 ${s.color} mb-1`} />
-                {loading ? <Skeleton className="h-8 w-16" /> : <span className={`text-3xl font-bold ${s.color}`}>{s.value}</span>}
-                <span className="text-xs text-muted-foreground">{s.label}</span>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              {/* Quick links */}
+              <div className="grid sm:grid-cols-2 gap-3">
+                {NAV.filter((n) => n.id !== "overview").map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => navTo(n.id)}
+                    className="flex items-center gap-3 p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors text-left group"
+                  >
+                    <div className="bg-muted w-9 h-9 rounded-lg flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
+                      <n.icon className="h-4.5 w-4.5 text-muted-foreground group-hover:text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{n.label}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-50 group-hover:opacity-100" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
-        <Tabs defaultValue="settings">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="settings" className="gap-1.5 flex-1 sm:flex-none">
-              <Settings className="h-3.5 w-3.5" />
-              Pengaturan
-            </TabsTrigger>
-            <TabsTrigger value="domains" className="gap-1.5 flex-1 sm:flex-none">
-              <Globe className="h-3.5 w-3.5" />
-              Domain
-            </TabsTrigger>
-            <TabsTrigger value="users" className="gap-1.5 flex-1 sm:flex-none">
-              <Users className="h-3.5 w-3.5" />
-              Pengguna
-            </TabsTrigger>
-            <TabsTrigger value="stats" className="gap-1.5 flex-1 sm:flex-none">
-              <BarChart2 className="h-3.5 w-3.5" />
-              Statistik
-            </TabsTrigger>
-          </TabsList>
+          {/* ── PENGATURAN UMUM ── */}
+          {active === "general" && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold">Pengaturan Umum</h1>
+                <p className="text-sm text-muted-foreground mt-1">Konfigurasi dasar sistem email sementara.</p>
+              </div>
 
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Pengaturan Situs</CardTitle>
-                <CardDescription>Konfigurasi umum aplikasi TempMail.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                {loading ? (
-                  <div className="space-y-4">{[1,2,3,4].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
-                ) : (
-                  <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Settings className="h-4 w-4" /> Batas & Durasi</CardTitle>
+                  <CardDescription>Atur batas penggunaan dan masa aktif email.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loading ? <div className="space-y-3">{[1,2,3,4].map(i=><Skeleton key={i} className="h-10 w-full"/>)}</div> : (
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <Label>Nama Situs</Label>
-                        <Input
-                          value={editSettings.site_name ?? ""}
-                          onChange={(e) => setEditSettings((p) => ({ ...p, site_name: e.target.value }))}
-                          placeholder="TempMail"
-                        />
+                        <Label>Default TTL Email (menit)</Label>
+                        <Input type="number" value={editSettings.default_ttl_minutes ?? "10"}
+                          onChange={(e) => set("default_ttl_minutes", e.target.value)} min={1} max={1440} />
+                        <p className="text-xs text-muted-foreground">Masa aktif email yang di-generate (default 10 menit).</p>
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Default TTL (menit)</Label>
-                        <Input
-                          type="number"
-                          value={editSettings.default_ttl_minutes ?? "10"}
-                          onChange={(e) => setEditSettings((p) => ({ ...p, default_ttl_minutes: e.target.value }))}
-                          min={1}
-                          max={1440}
-                        />
-                        <p className="text-xs text-muted-foreground">Masa aktif email baru yang di-generate (default: 10 menit).</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Max Inbox per User</Label>
-                        <Input
-                          type="number"
-                          value={editSettings.max_inboxes ?? "5"}
-                          onChange={(e) => setEditSettings((p) => ({ ...p, max_inboxes: e.target.value }))}
-                          min={1}
-                          max={20}
-                        />
+                        <Label>Max Inbox per Pengguna</Label>
+                        <Input type="number" value={editSettings.max_inboxes ?? "5"}
+                          onChange={(e) => set("max_inboxes", e.target.value)} min={1} max={20} />
+                        <p className="text-xs text-muted-foreground">Jumlah inbox yang bisa dibuka bersamaan.</p>
                       </div>
                       <div className="space-y-1.5">
                         <Label>Max Ukuran Pesan (KB)</Label>
-                        <Input
-                          type="number"
-                          value={editSettings.max_message_size_kb ?? "1024"}
-                          onChange={(e) => setEditSettings((p) => ({ ...p, max_message_size_kb: e.target.value }))}
-                          min={100}
+                        <Input type="number" value={editSettings.max_message_size_kb ?? "1024"}
+                          onChange={(e) => set("max_message_size_kb", e.target.value)} min={100} />
+                        <p className="text-xs text-muted-foreground">Batas ukuran pesan yang diterima.</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Max Email per Hari per User</Label>
+                        <Input type="number" value={editSettings.max_emails_per_day ?? "50"}
+                          onChange={(e) => set("max_emails_per_day", e.target.value)} min={1} />
+                        <p className="text-xs text-muted-foreground">0 = tidak dibatasi.</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4" /> Kontrol Akses</CardTitle>
+                  <CardDescription>Atur siapa yang bisa menggunakan layanan.</CardDescription>
+                </CardHeader>
+                <CardContent className="divide-y divide-border">
+                  {loading ? <Skeleton className="h-20 w-full" /> : (
+                    <>
+                      <ToggleRow
+                        label="Izinkan Registrasi"
+                        desc="Pengguna baru bisa membuat akun."
+                        checked={editSettings.allow_registration === "true"}
+                        onToggle={() => toggle("allow_registration")}
+                      />
+                      <ToggleRow
+                        label="Wajib Login untuk Generate Email"
+                        desc="Pengguna harus login sebelum bisa generate email sementara."
+                        checked={editSettings.require_login_to_generate === "true"}
+                        onToggle={() => toggle("require_login_to_generate")}
+                      />
+                      <ToggleRow
+                        label="Mode Pemeliharaan"
+                        desc="Tampilkan halaman maintenance untuk semua pengguna biasa."
+                        checked={editSettings.maintenance_mode === "true"}
+                        onToggle={() => toggle("maintenance_mode")}
+                      />
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
+                <Save className="h-4 w-4" />
+                {saving ? "Menyimpan..." : "Simpan Pengaturan Umum"}
+              </Button>
+            </>
+          )}
+
+          {/* ── PENGATURAN WEB ── */}
+          {active === "web" && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold">Pengaturan Web</h1>
+                <p className="text-sm text-muted-foreground mt-1">Konfigurasi tampilan, branding, SEO, dan fitur antarmuka.</p>
+              </div>
+
+              {/* Branding */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Image className="h-4 w-4" /> Branding & Identitas</CardTitle>
+                  <CardDescription>Nama, deskripsi, dan logo situs.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loading ? <div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-10 w-full"/>)}</div> : (
+                    <>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label>Nama Situs</Label>
+                          <Input value={editSettings.site_name ?? ""} onChange={(e) => set("site_name", e.target.value)} placeholder="TempMail" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>URL Logo Situs</Label>
+                          <Input value={editSettings.site_logo_url ?? ""} onChange={(e) => set("site_logo_url", e.target.value)} placeholder="https://..." />
+                          <p className="text-xs text-muted-foreground">Kosongkan untuk menggunakan ikon default.</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Deskripsi Singkat Situs</Label>
+                        <Textarea
+                          value={editSettings.site_description ?? ""}
+                          onChange={(e) => set("site_description", e.target.value)}
+                          placeholder="Layanan email sementara gratis..."
+                          rows={2}
+                        />
+                        <p className="text-xs text-muted-foreground">Ditampilkan di halaman utama sebagai tagline.</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Teks Footer</Label>
+                        <Input value={editSettings.footer_text ?? ""} onChange={(e) => set("footer_text", e.target.value)} placeholder="© 2025 TempMail..." />
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* SEO */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Search className="h-4 w-4" /> SEO & Meta</CardTitle>
+                  <CardDescription>Konfigurasi tag meta untuk mesin pencari.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loading ? <div className="space-y-3">{[1,2].map(i=><Skeleton key={i} className="h-10 w-full"/>)}</div> : (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label>Meta Title (judul browser/SEO)</Label>
+                        <Input value={editSettings.meta_title ?? ""} onChange={(e) => set("meta_title", e.target.value)} placeholder="TempMail - Email Sementara Gratis" />
+                        <p className="text-xs text-muted-foreground">Ditampilkan di tab browser dan hasil pencarian Google.</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Meta Keywords</Label>
+                        <Input value={editSettings.meta_keywords ?? ""} onChange={(e) => set("meta_keywords", e.target.value)} placeholder="email sementara, disposable email, temp mail" />
+                        <p className="text-xs text-muted-foreground">Pisahkan dengan koma.</p>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Fitur UI */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4" /> Fitur Antarmuka</CardTitle>
+                  <CardDescription>Toggle fitur-fitur di halaman utama.</CardDescription>
+                </CardHeader>
+                <CardContent className="divide-y divide-border">
+                  {loading ? <Skeleton className="h-28 w-full" /> : (
+                    <>
+                      <ToggleRow
+                        label="Tampilkan QR Code Otomatis"
+                        desc="QR code langsung muncul saat email di-generate."
+                        checked={editSettings.show_qr_by_default === "true"}
+                        onToggle={() => toggle("show_qr_by_default")}
+                      />
+                      <ToggleRow
+                        label="Auto Copy Email"
+                        desc="Email otomatis disalin ke clipboard saat di-generate."
+                        checked={editSettings.auto_copy_on_generate === "true"}
+                        onToggle={() => toggle("auto_copy_on_generate")}
+                      />
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Pengumuman */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-4 w-4" /> Banner Pengumuman</CardTitle>
+                  <CardDescription>Tampilkan banner info/peringatan di bagian atas halaman.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loading ? <div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-10 w-full"/>)}</div> : (
+                    <>
+                      <ToggleRow
+                        label="Aktifkan Banner"
+                        desc="Tampilkan banner pengumuman di halaman utama."
+                        checked={editSettings.announcement_enabled === "true"}
+                        onToggle={() => toggle("announcement_enabled")}
+                      />
+                      <div className="space-y-1.5">
+                        <Label>Tipe Banner</Label>
+                        <Select
+                          value={editSettings.announcement_type ?? "info"}
+                          onValueChange={(v) => set("announcement_type", v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="info">
+                              <div className="flex items-center gap-2"><Info className="h-3.5 w-3.5 text-blue-500" />Info (biru)</div>
+                            </SelectItem>
+                            <SelectItem value="warning">
+                              <div className="flex items-center gap-2"><AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />Peringatan (kuning)</div>
+                            </SelectItem>
+                            <SelectItem value="success">
+                              <div className="flex items-center gap-2"><CheckCircle className="h-3.5 w-3.5 text-green-500" />Sukses (hijau)</div>
+                            </SelectItem>
+                            <SelectItem value="error">
+                              <div className="flex items-center gap-2"><X className="h-3.5 w-3.5 text-red-500" />Error (merah)</div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Teks Pengumuman</Label>
+                        <Textarea
+                          value={editSettings.announcement_text ?? ""}
+                          onChange={(e) => set("announcement_text", e.target.value)}
+                          placeholder="Tulis pesan pengumuman di sini..."
+                          rows={3}
+                          disabled={editSettings.announcement_enabled !== "true"}
                         />
                       </div>
-                    </div>
-
-                    <div className="border border-border rounded-lg divide-y divide-border">
-                      <div className="flex items-center justify-between p-4">
+                      {/* Preview */}
+                      {editSettings.announcement_enabled === "true" && editSettings.announcement_text && (
                         <div>
-                          <p className="text-sm font-medium">Izinkan Registrasi</p>
-                          <p className="text-xs text-muted-foreground">Pengguna baru bisa mendaftar akun.</p>
-                        </div>
-                        <Button variant="ghost" size="sm" className="gap-2" onClick={() => toggleBool("allow_registration")}>
-                          {editSettings.allow_registration === "true"
-                            ? <><ToggleRight className="h-5 w-5 text-green-500" /><span className="text-green-600 text-xs">Aktif</span></>
-                            : <><ToggleLeft className="h-5 w-5 text-muted-foreground" /><span className="text-xs text-muted-foreground">Nonaktif</span></>
-                          }
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-between p-4">
-                        <div>
-                          <p className="text-sm font-medium">Mode Pemeliharaan</p>
-                          <p className="text-xs text-muted-foreground">Situs menampilkan halaman maintenance untuk pengguna biasa.</p>
-                        </div>
-                        <Button variant="ghost" size="sm" className="gap-2" onClick={() => toggleBool("maintenance_mode")}>
-                          {editSettings.maintenance_mode === "true"
-                            ? <><ToggleRight className="h-5 w-5 text-orange-500" /><span className="text-orange-600 text-xs">Aktif</span></>
-                            : <><ToggleLeft className="h-5 w-5 text-muted-foreground" /><span className="text-xs text-muted-foreground">Nonaktif</span></>
-                          }
-                        </Button>
-                      </div>
-                    </div>
-
-                    <Button onClick={handleSaveSettings} disabled={savingSettings} className="gap-2">
-                      <Save className="h-4 w-4" />
-                      {savingSettings ? "Menyimpan..." : "Simpan Pengaturan"}
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Domains Tab */}
-          <TabsContent value="domains" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Manajemen Domain</CardTitle>
-                <CardDescription>Tambah atau hapus domain yang tersedia untuk generate email.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="domain-baru.com"
-                    value={newDomain}
-                    onChange={(e) => setNewDomain(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") addDomain(); }}
-                    className="flex-1"
-                  />
-                  <Button onClick={addDomain} className="gap-1.5 shrink-0">
-                    <PlusCircle className="h-4 w-4" />
-                    Tambah
-                  </Button>
-                </div>
-
-                <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
-                  {getDomains().length === 0 ? (
-                    <div className="p-6 text-center text-muted-foreground text-sm">Belum ada domain.</div>
-                  ) : getDomains().map((d) => (
-                    <div key={d} className="flex items-center justify-between p-3 hover:bg-muted/20">
-                      <div className="flex items-center gap-2">
-                        <Globe className="h-4 w-4 text-primary" />
-                        <span className="font-mono text-sm">@{d}</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeDomain(d)}
-                        disabled={getDomains().length <= 1}
-                        title="Minimal 1 domain harus ada"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-
-                <Button onClick={handleSaveSettings} disabled={savingSettings} className="gap-2">
-                  <Save className="h-4 w-4" />
-                  {savingSettings ? "Menyimpan..." : "Simpan Perubahan Domain"}
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Users Tab */}
-          <TabsContent value="users" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Manajemen Pengguna</CardTitle>
-                <CardDescription>{users.length} pengguna terdaftar.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
-                ) : users.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">Belum ada pengguna.</div>
-                ) : (
-                  <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-                    {users.map((u) => (
-                      <div key={u.id} className="flex items-center justify-between p-3 hover:bg-muted/20">
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium truncate">{u.email}</span>
-                            <Badge
-                              variant={u.role === "admin" ? "default" : "secondary"}
-                              className="text-[10px] h-4 px-1.5 shrink-0"
-                            >
-                              {u.role === "admin" ? "Admin" : "User"}
-                            </Badge>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Preview</Label>
+                          <div className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 border ${
+                            editSettings.announcement_type === "warning" ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200" :
+                            editSettings.announcement_type === "success" ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200" :
+                            editSettings.announcement_type === "error" ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200" :
+                            "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200"
+                          }`}>
+                            {editSettings.announcement_type === "warning" && <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />}
+                            {editSettings.announcement_type === "success" && <CheckCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+                            {editSettings.announcement_type === "error" && <X className="h-4 w-4 mt-0.5 shrink-0" />}
+                            {editSettings.announcement_type === "info" && <Info className="h-4 w-4 mt-0.5 shrink-0" />}
+                            <span>{editSettings.announcement_text}</span>
                           </div>
-                          <span className="text-xs text-muted-foreground">
-                            Bergabung {format(new Date(u.createdAt), "d MMM yyyy")}
-                          </span>
                         </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
 
-                        <div className="flex items-center gap-1 shrink-0">
+              <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
+                <Save className="h-4 w-4" />
+                {saving ? "Menyimpan..." : "Simpan Pengaturan Web"}
+              </Button>
+            </>
+          )}
+
+          {/* ── DOMAIN ── */}
+          {active === "domains" && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold">Manajemen Domain</h1>
+                <p className="text-sm text-muted-foreground mt-1">Tambah atau hapus domain yang tersedia untuk generate email.</p>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Domain Tersedia</CardTitle>
+                  <CardDescription>{getDomains().length} domain aktif</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="contoh-domain.com"
+                      value={newDomain}
+                      onChange={(e) => setNewDomain(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") addDomain(); }}
+                      className="flex-1"
+                    />
+                    <Button onClick={addDomain} className="gap-1.5 shrink-0">
+                      <PlusCircle className="h-4 w-4" />
+                      Tambah
+                    </Button>
+                  </div>
+                  <div className="border border-border rounded-lg overflow-hidden divide-y divide-border">
+                    {loading ? (
+                      [1,2,3].map(i => <Skeleton key={i} className="h-12 w-full rounded-none" />)
+                    ) : getDomains().length === 0 ? (
+                      <div className="p-8 text-center text-muted-foreground text-sm">Belum ada domain.</div>
+                    ) : getDomains().map((d) => (
+                      <div key={d} className="flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                            <Globe className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <span className="font-mono text-sm font-medium">@{d}</span>
+                            <p className="text-xs text-muted-foreground">Email aktif: user@{d}</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
+                    <Save className="h-4 w-4" />
+                    {saving ? "Menyimpan..." : "Simpan Perubahan"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* ── PENGGUNA ── */}
+          {active === "users" && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold">Manajemen Pengguna</h1>
+                <p className="text-sm text-muted-foreground mt-1">{users.length} pengguna terdaftar di sistem.</p>
+              </div>
+
+              <Card>
+                <CardContent className="p-0">
+                  {loading ? (
+                    <div className="p-4 space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+                  ) : users.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground text-sm">Belum ada pengguna.</div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {users.map((u) => (
+                        <div key={u.id} className="flex items-center justify-between p-4 hover:bg-muted/20 transition-colors">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-bold">
+                              {u.email[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium truncate">{u.email}</span>
+                                <Badge variant={u.role === "admin" ? "default" : "secondary"} className="text-[10px] h-4 px-1.5 shrink-0">
+                                  {u.role === "admin" ? "Admin" : "User"}
+                                </Badge>
+                                {u.id === user.id && <Badge variant="outline" className="text-[10px] h-4 px-1.5 shrink-0">Anda</Badge>}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">Bergabung {format(new Date(u.createdAt), "d MMM yyyy, HH:mm")}</p>
+                            </div>
+                          </div>
                           {u.id !== user.id && (
-                            <>
+                            <div className="flex items-center gap-1 shrink-0 ml-2">
                               <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title={u.role === "admin" ? "Turunkan ke User" : "Jadikan Admin"}
+                                variant="outline" size="sm" className="h-7 text-xs gap-1"
                                 onClick={() => handleRoleChange(u.id, u.role === "admin" ? "user" : "admin")}
                               >
                                 {u.role === "admin"
-                                  ? <ShieldX className="h-3.5 w-3.5 text-muted-foreground" />
-                                  : <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                                }
+                                  ? <><ShieldX className="h-3 w-3" />Turunkan</>
+                                  : <><ShieldCheck className="h-3 w-3" />Jadikan Admin</>}
                               </Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -436,67 +689,80 @@ export default function AdminPage() {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Hapus pengguna?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      Akun <strong>{u.email}</strong> akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
+                                      Akun <strong>{u.email}</strong> akan dihapus permanen beserta semua datanya. Tidak bisa dibatalkan.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Batal</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteUser(u.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      Hapus
+                                    <AlertDialogAction onClick={() => handleDeleteUser(u.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                      Hapus Permanen
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
-                            </>
-                          )}
-                          {u.id === user.id && (
-                            <Badge variant="outline" className="text-[10px] h-5">Anda</Badge>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
 
-          {/* Stats Tab */}
-          <TabsContent value="stats" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Ringkasan Statistik</CardTitle>
-                <CardDescription>Data penggunaan keseluruhan sistem TempMail.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {loading ? (
-                  <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
-                ) : (
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {[
-                      { label: "Total Pengguna Terdaftar", value: stats?.totalUsers ?? 0, icon: Users, color: "bg-violet-50 dark:bg-violet-950/30 text-violet-600" },
-                      { label: "Total Email Pernah Dibuat", value: stats?.totalEmails ?? 0, icon: Mail, color: "bg-primary/10 text-primary" },
-                      { label: "Total Pesan Diterima", value: stats?.totalMessages ?? 0, icon: Inbox, color: "bg-green-50 dark:bg-green-950/30 text-green-600" },
-                      { label: "Rata-rata Pesan per Email", value: stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0", icon: BarChart2, color: "bg-orange-50 dark:bg-orange-950/30 text-orange-600" },
-                    ].map((s) => (
-                      <div key={s.label} className={`${s.color} rounded-xl p-4 flex items-center gap-4`}>
-                        <s.icon className="h-8 w-8 opacity-80" />
-                        <div>
-                          <div className="text-2xl font-bold">{s.value}</div>
-                          <div className="text-xs font-medium opacity-70">{s.label}</div>
-                        </div>
+          {/* ── STATISTIK ── */}
+          {active === "stats" && (
+            <>
+              <div>
+                <h1 className="text-xl font-bold">Statistik</h1>
+                <p className="text-sm text-muted-foreground mt-1">Ringkasan data penggunaan sistem secara keseluruhan.</p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                {[
+                  { label: "Total Pengguna Terdaftar", value: stats?.totalUsers ?? 0, icon: Users, color: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300" },
+                  { label: "Total Email Dibuat", value: stats?.totalEmails ?? 0, icon: Mail, color: "bg-primary/10 text-primary" },
+                  { label: "Total Pesan Diterima", value: stats?.totalMessages ?? 0, icon: Inbox, color: "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300" },
+                  { label: "Rata-rata Pesan/Email", value: stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0", icon: BarChart2, color: "bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300" },
+                ].map((s) => (
+                  <Card key={s.label} className={`border-0 ${s.color}`}>
+                    <CardContent className="p-5 flex items-center gap-4">
+                      <s.icon className="h-10 w-10 opacity-70 shrink-0" />
+                      <div>
+                        {loading ? <Skeleton className="h-9 w-20 mb-1" /> : <div className="text-3xl font-bold">{s.value}</div>}
+                        <div className="text-xs font-medium opacity-70">{s.label}</div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Informasi Sistem</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { label: "Nama Situs", value: settings?.site_name ?? "-" },
+                    { label: "Domain Tersedia", value: getDomains().map(d => `@${d}`).join(", ") || "-" },
+                    { label: "Default TTL", value: `${settings?.default_ttl_minutes ?? "10"} menit` },
+                    { label: "Max Inbox", value: `${settings?.max_inboxes ?? "5"} per user` },
+                    { label: "Registrasi", value: settings?.allow_registration === "true" ? "Dibuka" : "Ditutup" },
+                    { label: "Mode Pemeliharaan", value: settings?.maintenance_mode === "true" ? "Aktif" : "Nonaktif" },
+                  ].map((r) => (
+                    <div key={r.label} className="flex justify-between text-sm border-b border-border/50 pb-2 last:border-0">
+                      <span className="text-muted-foreground">{r.label}</span>
+                      <span className="font-medium text-right max-w-xs truncate">{r.value}</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+        </main>
+      </div>
     </div>
   );
 }

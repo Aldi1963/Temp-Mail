@@ -67,6 +67,7 @@ router.patch("/users/:id/password", async (req, res) => {
 
 // --- Site Settings ---
 const DEFAULT_SETTINGS: Record<string, string> = {
+  // Umum
   site_name: "TempMail",
   default_ttl_minutes: "10",
   max_inboxes: "5",
@@ -74,6 +75,21 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   allow_registration: "true",
   maintenance_mode: "false",
   max_message_size_kb: "1024",
+  // Branding & SEO
+  site_description: "Layanan email sementara gratis. Buat alamat email sekali pakai secara instan.",
+  site_logo_url: "",
+  meta_title: "TempMail - Email Sementara Gratis",
+  meta_keywords: "email sementara, temporary email, disposable email, temp mail",
+  footer_text: "© 2025 TempMail. Semua hak cipta dilindungi.",
+  // Fitur
+  require_login_to_generate: "false",
+  max_emails_per_day: "50",
+  show_qr_by_default: "false",
+  auto_copy_on_generate: "true",
+  // Pengumuman
+  announcement_enabled: "false",
+  announcement_text: "",
+  announcement_type: "info",
 };
 
 router.get("/settings", async (_req, res) => {
