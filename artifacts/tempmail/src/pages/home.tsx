@@ -4,9 +4,11 @@ import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
 import { MessageViewer } from "@/components/message-viewer";
 import { InboxSwitcher } from "@/components/inbox-switcher";
+import { PinLock } from "@/components/pin-lock";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useSound } from "@/hooks/use-sound";
 import { useToast } from "@/hooks/use-toast";
+import { usePin } from "@/hooks/use-pin";
 import { useGetInbox, getGetInboxQueryKey } from "@workspace/api-client-react";
 
 interface InboxEntry {
@@ -25,7 +27,8 @@ export default function Home() {
   const { toast } = useToast();
   const prevTotalRef = useRef<number>(0);
 
-  // When setting active email, also register it in the inbox list
+  const { hasPin, isUnlocked, setupPin, removePin, verifyPin, lock } = usePin();
+
   const setActiveEmail = useCallback((email: string) => {
     setActiveEmailRaw(email);
     setInboxList((prev) => {
@@ -52,22 +55,18 @@ export default function Home() {
     { email: activeEmail! },
     {
       query: {
-        enabled: !!activeEmail,
+        enabled: !!activeEmail && isUnlocked,
         refetchInterval: 5000,
         queryKey: getGetInboxQueryKey({ email: activeEmail! }),
       },
     }
   );
 
-  // New mail notifications
   useEffect(() => {
     if (inbox && inbox.total > prevTotalRef.current) {
       if (prevTotalRef.current > 0) {
         playChime();
-        toast({
-          title: "Email Baru Masuk",
-          description: "Ada pesan baru di inbox Anda.",
-        });
+        toast({ title: "Email Baru Masuk", description: "Ada pesan baru di inbox Anda." });
       }
       prevTotalRef.current = inbox.total;
     } else if (inbox && inbox.total < prevTotalRef.current) {
@@ -75,7 +74,6 @@ export default function Home() {
     }
   }, [inbox?.total, playChime, toast]);
 
-  // Reset selected message when email changes
   useEffect(() => {
     setSelectedMessageId(null);
     prevTotalRef.current = 0;
@@ -83,6 +81,11 @@ export default function Home() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
+      {/* PIN Lock Screen */}
+      {hasPin && !isUnlocked && (
+        <PinLock onVerify={verifyPin} />
+      )}
+
       <Header
         rightSlot={
           <InboxSwitcher
@@ -97,11 +100,15 @@ export default function Home() {
 
       <main className="flex-1 container max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        {/* Left: Address + Stats */}
+        {/* Left: Address + Stats + Security */}
         <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
           <EmailPane
             activeEmail={activeEmail}
             setActiveEmail={setActiveEmail}
+            hasPin={hasPin}
+            onSetupPin={setupPin}
+            onRemovePin={removePin}
+            onLock={lock}
           />
         </div>
 

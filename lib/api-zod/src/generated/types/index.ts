@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./addBlacklistRequest";
 export * from "./attachment";
+export * from "./blacklistEntry";
+export * from "./blacklistResponse";
 export * from "./domainsResponse";
 export * from "./emailMessage";
 export * from "./emailMessageSummary";
@@ -16,11 +19,13 @@ export * from "./extendEmailRequest";
 export * from "./extendEmailResponse";
 export * from "./generatedEmail";
 export * from "./generateEmailParams";
+export * from "./getBlacklistParams";
 export * from "./getEmailStatsParams";
 export * from "./getInboxParams";
 export * from "./getMessageParams";
 export * from "./healthStatus";
 export * from "./inboxResponse";
 export * from "./markReadRequest";
+export * from "./removeFromBlacklistParams";
 export * from "./resetInboxParams";
 export * from "./successResponse";

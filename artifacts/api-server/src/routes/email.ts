@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { emailAddressesTable, messagesTable } from "@workspace/db";
+import { emailAddressesTable, messagesTable, blockedSendersTable } from "@workspace/db";
 import { eq, and, desc, lt } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
@@ -11,6 +11,9 @@ import {
   ResetInboxQueryParams,
   GetEmailStatsQueryParams,
   ExtendEmailBody,
+  GetBlacklistQueryParams,
+  AddToBlacklistBody,
+  RemoveFromBlacklistQueryParams,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -87,15 +90,24 @@ router.get("/inbox", async (req, res) => {
   await cleanupExpiredData();
 
   const { email } = parsed.data;
-  const messages = await db
-    .select()
-    .from(messagesTable)
-    .where(eq(messagesTable.email, email))
-    .orderBy(desc(messagesTable.receivedAt));
+  const [messages, blocked] = await Promise.all([
+    db.select().from(messagesTable).where(eq(messagesTable.email, email)).orderBy(desc(messagesTable.receivedAt)),
+    db.select().from(blockedSendersTable).where(eq(blockedSendersTable.email, email)),
+  ]);
 
-  const unreadCount = messages.filter((m) => !m.isRead).length;
+  const blockedPatterns = blocked.map((b) => b.pattern.toLowerCase());
 
-  const summaries = messages.map((m) => ({
+  const filteredMessages = messages.filter((m) => {
+    const from = m.fromAddress.toLowerCase();
+    return !blockedPatterns.some((p) => {
+      if (p.startsWith("@")) return from.endsWith(p);
+      return from === p;
+    });
+  });
+
+  const unreadCount = filteredMessages.filter((m) => !m.isRead).length;
+
+  const summaries = filteredMessages.map((m) => ({
     id: m.id,
     from: m.fromAddress,
     subject: m.subject,
@@ -108,9 +120,63 @@ router.get("/inbox", async (req, res) => {
   res.json({
     email,
     messages: summaries,
-    total: messages.length,
+    total: filteredMessages.length,
     unreadCount,
   });
+});
+
+router.get("/blacklist", async (req, res) => {
+  const parsed = GetBlacklistQueryParams.safeParse(req.query);
+  if (!parsed.success || !parsed.data.email) {
+    res.status(400).json({ error: "Bad request", message: "email is required" });
+    return;
+  }
+  const { email } = parsed.data;
+  const blocked = await db.select().from(blockedSendersTable).where(eq(blockedSendersTable.email, email));
+  res.json({
+    blocked: blocked.map((b) => ({
+      id: b.id,
+      pattern: b.pattern,
+      createdAt: b.createdAt.toISOString(),
+    })),
+  });
+});
+
+router.post("/blacklist", async (req, res) => {
+  const parsed = AddToBlacklistBody.safeParse(req.body);
+  if (!parsed.success || !parsed.data.email || !parsed.data.pattern) {
+    res.status(400).json({ error: "Bad request", message: "email and pattern are required" });
+    return;
+  }
+  const { email, pattern } = parsed.data;
+  const normalized = pattern.toLowerCase().trim();
+
+  const existing = await db
+    .select()
+    .from(blockedSendersTable)
+    .where(and(eq(blockedSendersTable.email, email), eq(blockedSendersTable.pattern, normalized)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    res.json({ success: true, message: "Already blocked" });
+    return;
+  }
+
+  await db.insert(blockedSendersTable).values({ email, pattern: normalized });
+  res.json({ success: true, message: `Blocked: ${normalized}` });
+});
+
+router.delete("/blacklist", async (req, res) => {
+  const parsed = RemoveFromBlacklistQueryParams.safeParse(req.query);
+  if (!parsed.success || !parsed.data.email || !parsed.data.pattern) {
+    res.status(400).json({ error: "Bad request", message: "email and pattern are required" });
+    return;
+  }
+  const { email, pattern } = parsed.data;
+  await db
+    .delete(blockedSendersTable)
+    .where(and(eq(blockedSendersTable.email, email), eq(blockedSendersTable.pattern, pattern)));
+  res.json({ success: true, message: "Removed from blacklist" });
 });
 
 router.get("/message", async (req, res) => {

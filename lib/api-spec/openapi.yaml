@@ -199,6 +199,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainsResponse"
+  /email/blacklist:
+    get:
+      operationId: getBlacklist
+      tags: [email]
+      summary: Get blocked senders list for an email address
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of blocked senders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlacklistResponse"
+    post:
+      operationId: addToBlacklist
+      tags: [email]
+      summary: Block a sender or domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddBlacklistRequest"
+      responses:
+        "200":
+          description: Sender blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: removeFromBlacklist
+      tags: [email]
+      summary: Remove a sender from blacklist
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: pattern
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sender removed from blacklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
   /email/stats:
     get:
       operationId: getEmailStats
@@ -451,3 +515,40 @@ components:
       required:
         - error
         - message
+
+    BlacklistEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        pattern:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - pattern
+        - createdAt
+
+    BlacklistResponse:
+      type: object
+      properties:
+        blocked:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlacklistEntry"
+      required:
+        - blocked
+
+    AddBlacklistRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        pattern:
+          type: string
+          description: Sender email or domain to block (e.g. spam@evil.com or @evil.com)
+      required:
+        - email
+        - pattern

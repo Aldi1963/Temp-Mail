@@ -17,6 +17,8 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AddBlacklistRequest,
+  BlacklistResponse,
   DomainsResponse,
   EmailMessage,
   EmailStats,
@@ -25,12 +27,14 @@ import type {
   ExtendEmailResponse,
   GenerateEmailParams,
   GeneratedEmail,
+  GetBlacklistParams,
   GetEmailStatsParams,
   GetInboxParams,
   GetMessageParams,
   HealthStatus,
   InboxResponse,
   MarkReadRequest,
+  RemoveFromBlacklistParams,
   ResetInboxParams,
   SuccessResponse,
 } from "./api.schemas";
@@ -744,6 +748,284 @@ export function useGetAvailableDomains<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get blocked senders list for an email address
+ */
+export const getGetBlacklistUrl = (params: GetBlacklistParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/email/blacklist?${stringifiedParams}`
+    : `/api/email/blacklist`;
+};
+
+export const getBlacklist = async (
+  params: GetBlacklistParams,
+  options?: RequestInit,
+): Promise<BlacklistResponse> => {
+  return customFetch<BlacklistResponse>(getGetBlacklistUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBlacklistQueryKey = (params?: GetBlacklistParams) => {
+  return [`/api/email/blacklist`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetBlacklistQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBlacklist>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetBlacklistParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBlacklist>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBlacklistQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getBlacklist>>> = ({
+    signal,
+  }) => getBlacklist(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBlacklist>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBlacklistQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBlacklist>>
+>;
+export type GetBlacklistQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get blocked senders list for an email address
+ */
+
+export function useGetBlacklist<
+  TData = Awaited<ReturnType<typeof getBlacklist>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetBlacklistParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBlacklist>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBlacklistQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Block a sender or domain
+ */
+export const getAddToBlacklistUrl = () => {
+  return `/api/email/blacklist`;
+};
+
+export const addToBlacklist = async (
+  addBlacklistRequest: AddBlacklistRequest,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getAddToBlacklistUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(addBlacklistRequest),
+  });
+};
+
+export const getAddToBlacklistMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addToBlacklist>>,
+    TError,
+    { data: BodyType<AddBlacklistRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof addToBlacklist>>,
+  TError,
+  { data: BodyType<AddBlacklistRequest> },
+  TContext
+> => {
+  const mutationKey = ["addToBlacklist"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof addToBlacklist>>,
+    { data: BodyType<AddBlacklistRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return addToBlacklist(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AddToBlacklistMutationResult = NonNullable<
+  Awaited<ReturnType<typeof addToBlacklist>>
+>;
+export type AddToBlacklistMutationBody = BodyType<AddBlacklistRequest>;
+export type AddToBlacklistMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Block a sender or domain
+ */
+export const useAddToBlacklist = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addToBlacklist>>,
+    TError,
+    { data: BodyType<AddBlacklistRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof addToBlacklist>>,
+  TError,
+  { data: BodyType<AddBlacklistRequest> },
+  TContext
+> => {
+  return useMutation(getAddToBlacklistMutationOptions(options));
+};
+
+/**
+ * @summary Remove a sender from blacklist
+ */
+export const getRemoveFromBlacklistUrl = (
+  params: RemoveFromBlacklistParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/email/blacklist?${stringifiedParams}`
+    : `/api/email/blacklist`;
+};
+
+export const removeFromBlacklist = async (
+  params: RemoveFromBlacklistParams,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getRemoveFromBlacklistUrl(params), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getRemoveFromBlacklistMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removeFromBlacklist>>,
+    TError,
+    { params: RemoveFromBlacklistParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof removeFromBlacklist>>,
+  TError,
+  { params: RemoveFromBlacklistParams },
+  TContext
+> => {
+  const mutationKey = ["removeFromBlacklist"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof removeFromBlacklist>>,
+    { params: RemoveFromBlacklistParams }
+  > = (props) => {
+    const { params } = props ?? {};
+
+    return removeFromBlacklist(params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RemoveFromBlacklistMutationResult = NonNullable<
+  Awaited<ReturnType<typeof removeFromBlacklist>>
+>;
+
+export type RemoveFromBlacklistMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a sender from blacklist
+ */
+export const useRemoveFromBlacklist = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removeFromBlacklist>>,
+    TError,
+    { params: RemoveFromBlacklistParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof removeFromBlacklist>>,
+  TError,
+  { params: RemoveFromBlacklistParams },
+  TContext
+> => {
+  return useMutation(getRemoveFromBlacklistMutationOptions(options));
+};
 
 /**
  * @summary Get stats for a temporary email address (total, read, unread, expiry)

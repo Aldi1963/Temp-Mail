@@ -132,6 +132,53 @@ export const GetAvailableDomainsResponse = zod.object({
 });
 
 /**
+ * @summary Get blocked senders list for an email address
+ */
+export const GetBlacklistQueryParams = zod.object({
+  email: zod.coerce.string(),
+});
+
+export const GetBlacklistResponse = zod.object({
+  blocked: zod.array(
+    zod.object({
+      id: zod.number(),
+      pattern: zod.string(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Block a sender or domain
+ */
+export const AddToBlacklistBody = zod.object({
+  email: zod.string(),
+  pattern: zod
+    .string()
+    .describe(
+      "Sender email or domain to block (e.g. spam@evil.com or @evil.com)",
+    ),
+});
+
+export const AddToBlacklistResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string(),
+});
+
+/**
+ * @summary Remove a sender from blacklist
+ */
+export const RemoveFromBlacklistQueryParams = zod.object({
+  email: zod.coerce.string(),
+  pattern: zod.coerce.string(),
+});
+
+export const RemoveFromBlacklistResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string(),
+});
+
+/**
  * @summary Get stats for a temporary email address (total, read, unread, expiry)
  */
 export const GetEmailStatsQueryParams = zod.object({

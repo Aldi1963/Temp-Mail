@@ -1,18 +1,26 @@
 import { format } from "date-fns";
-import { ArrowLeft, Download, FileText, Paperclip, FileDown } from "lucide-react";
+import { ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { useGetMessage, useMarkMessageRead, getGetInboxQueryKey, getGetEmailStatsQueryKey } from "@workspace/api-client-react";
+import {
+  useGetMessage,
+  useMarkMessageRead,
+  useAddToBlacklist,
+  getGetInboxQueryKey,
+  getGetEmailStatsQueryKey,
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 
 interface MessageViewerProps {
   messageId: string;
@@ -103,6 +111,7 @@ function exportAsTxt(message: {
 export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) {
   const queryClient = useQueryClient();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const { toast } = useToast();
 
   const { data: message, isLoading, isError } = useGetMessage(
     { id: messageId, email },
@@ -110,6 +119,7 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
   );
 
   const markReadMutation = useMarkMessageRead();
+  const blockMutation = useAddToBlacklist();
 
   useEffect(() => {
     if (message && !message.isRead) {
@@ -138,6 +148,26 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
       }
     }
   }, [message?.htmlBody]);
+
+  const handleBlock = (pattern: string, label: string) => {
+    blockMutation.mutate(
+      { data: { email, pattern } },
+      {
+        onSuccess: () => {
+          toast({ title: "Pengirim diblokir", description: `${label} telah ditambahkan ke daftar blokir.` });
+          queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email }) });
+        },
+        onError: () => {
+          toast({ title: "Gagal memblokir", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const getSenderDomain = (from: string) => {
+    const match = from.match(/@([^>]+)>?$/);
+    return match ? `@${match[1].trim()}` : null;
+  };
 
   if (isLoading) {
     return (
@@ -171,6 +201,8 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
     );
   }
 
+  const senderDomain = getSenderDomain(message.from);
+
   return (
     <div className="flex flex-col h-full bg-card rounded-lg border border-border shadow-sm overflow-hidden flex-1">
       {/* Header */}
@@ -182,31 +214,71 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
           {message.subject || "(Tanpa Subjek)"}
         </h2>
 
-        {/* Export dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs shrink-0">
-              <FileDown className="h-3.5 w-3.5" />
-              Ekspor
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem
-              className="text-xs cursor-pointer gap-2"
-              onClick={() => exportAsEml(message)}
-            >
-              <Download className="h-3.5 w-3.5" />
-              Unduh .eml
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs cursor-pointer gap-2"
-              onClick={() => exportAsTxt(message)}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Unduh .txt
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Block dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                title="Blokir pengirim"
+              >
+                <ShieldBan className="h-3.5 w-3.5" />
+                Blokir
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem
+                className="text-xs cursor-pointer gap-2 text-destructive focus:text-destructive"
+                onClick={() => handleBlock(message.from, message.from)}
+                disabled={blockMutation.isPending}
+              >
+                <ShieldBan className="h-3.5 w-3.5" />
+                Blokir pengirim ini
+              </DropdownMenuItem>
+              {senderDomain && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs cursor-pointer gap-2 text-orange-600 focus:text-orange-600"
+                    onClick={() => handleBlock(senderDomain, senderDomain)}
+                    disabled={blockMutation.isPending}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    Blokir domain {senderDomain}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Export dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs">
+                <FileDown className="h-3.5 w-3.5" />
+                Ekspor
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem
+                className="text-xs cursor-pointer gap-2"
+                onClick={() => exportAsEml(message)}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Unduh .eml
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs cursor-pointer gap-2"
+                onClick={() => exportAsTxt(message)}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Unduh .txt
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Meta */}

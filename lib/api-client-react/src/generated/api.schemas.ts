@@ -99,6 +99,22 @@ export interface ErrorResponse {
   message: string;
 }
 
+export interface BlacklistEntry {
+  id: number;
+  pattern: string;
+  createdAt: string;
+}
+
+export interface BlacklistResponse {
+  blocked: BlacklistEntry[];
+}
+
+export interface AddBlacklistRequest {
+  email: string;
+  /** Sender email or domain to block (e.g. spam@evil.com or @evil.com) */
+  pattern: string;
+}
+
 export type GenerateEmailParams = {
   /**
    * Optional custom username
@@ -133,6 +149,15 @@ export type ResetInboxParams = {
    * The email address to reset
    */
   email: string;
+};
+
+export type GetBlacklistParams = {
+  email: string;
+};
+
+export type RemoveFromBlacklistParams = {
+  email: string;
+  pattern: string;
 };
 
 export type GetEmailStatsParams = {

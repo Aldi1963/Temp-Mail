@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, integer, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -24,6 +24,13 @@ export const messagesTable = pgTable("messages", {
   attachmentsJson: text("attachments_json").notNull().default("[]"),
   receivedAt: timestamp("received_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const blockedSendersTable = pgTable("blocked_senders", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().references(() => emailAddressesTable.email, { onDelete: "cascade" }),
+  pattern: text("pattern").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertEmailAddressSchema = createInsertSchema(emailAddressesTable);
