@@ -48,6 +48,37 @@ export const blockedSendersTable = pgTable("blocked_senders", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const apiKeysTable = pgTable("api_keys", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  keyHash: text("key_hash").notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const webhooksTable = pgTable("webhooks", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  events: text("events").notNull().default('["new_message"]'),
+  secret: text("secret").notNull(),
+  active: boolean("active").notNull().default(true),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  failCount: integer("fail_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const userTwoFactorTable = pgTable("user_two_factor", {
+  userId: integer("user_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
+  secret: text("secret").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  backupCodes: text("backup_codes").notNull().default("[]"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertEmailAddressSchema = createInsertSchema(emailAddressesTable);
 export const insertMessageSchema = createInsertSchema(messagesTable);
 export const insertUserSchema = createInsertSchema(usersTable);

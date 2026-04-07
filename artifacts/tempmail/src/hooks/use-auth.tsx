@@ -10,7 +10,7 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requires2fa: boolean }>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refetch: () => Promise<void>;
@@ -46,12 +46,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { fetchMe(); }, []);
 
-  const login = async (email: string, password: string) => {
-    const data = await apiFetch("/api/auth/login", {
+  const login = async (email: string, password: string): Promise<{ requires2fa: boolean }> => {
+    const res = await fetch("/api/auth/login", {
       method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
+    if (data?.requires2fa) return { requires2fa: true };
     setUser(data);
+    return { requires2fa: false };
   };
 
   const register = async (email: string, password: string) => {

@@ -10,6 +10,8 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import DashboardPage from "@/pages/dashboard";
 import AdminPage from "@/pages/admin";
+import DeveloperPage from "@/pages/developer";
+import ProfilePage from "@/pages/profile";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
 
@@ -42,6 +44,12 @@ function Router() {
       </Route>
       <Route path="/admin">
         {() => <ProtectedRoute component={AdminPage} adminOnly />}
+      </Route>
+      <Route path="/developer">
+        {() => <ProtectedRoute component={DeveloperPage} />}
+      </Route>
+      <Route path="/profile">
+        {() => <ProtectedRoute component={ProfilePage} />}
       </Route>
       <Route component={NotFound} />
     </Switch>

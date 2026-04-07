@@ -53,27 +53,43 @@ A full-featured temporary email service similar to temp-mail.org.
 - User registration & login with bcrypt password hashing
 - Session-based auth (express-session + connect-pg-simple, stored in `user_sessions` PostgreSQL table)
 - First registered user auto-becomes admin
-- Header shows user dropdown (Dashboard, Admin panel, Logout) when logged in
+- Header shows user dropdown (Dashboard, Profile, Developer Tools, Admin panel, Logout) when logged in
 - `/login` and `/register` pages
 - `/dashboard` — personal stats (total emails, messages, active) + email history
-- `/admin` — Admin panel with tabs: Settings, Domain management, User management, Statistics
-- Protected routes: `/dashboard` requires auth, `/admin` requires admin role
+- `/profile` — change password, 2FA setup/disable
+- `/developer` — API key management + webhook management
+- `/admin` — Admin panel with sidebar: Ringkasan, Pengaturan Umum, Pengaturan Web, Domain, Pengguna, Statistik
+- Protected routes: `/dashboard`, `/profile`, `/developer` require auth; `/admin` requires admin role
 
-**Auth API Routes (not in OpenAPI spec, use fetch with credentials: "include"):**
-- `POST /api/auth/register` — `{email, password}` — create account, first user = admin
-- `POST /api/auth/login` — `{email, password}` — login
+**Auth API Routes:**
+- `POST /api/auth/register` — create account, first user = admin
+- `POST /api/auth/login` — login; returns `{requires2fa: true}` if 2FA is enabled
 - `POST /api/auth/logout` — logout
 - `GET /api/auth/me` — current user info
-- `GET /api/user/emails` — user's email history
-- `GET /api/user/stats` — user's usage stats
-- `GET /api/admin/stats` — system-wide stats (admin only)
-- `GET /api/admin/users` — list all users (admin only)
-- `PATCH /api/admin/users/:id/role` — change user role (admin only)
-- `DELETE /api/admin/users/:id` — delete user (admin only)
-- `GET /api/admin/settings` — get site settings (admin only)
-- `PUT /api/admin/settings` — save site settings (admin only)
+- `POST /api/auth/change-password` — change password
+- `GET /api/auth/2fa/status` — 2FA enabled status
+- `POST /api/auth/2fa/setup` — generate TOTP secret + QR code
+- `POST /api/auth/2fa/enable` — verify TOTP + activate 2FA (returns backup codes)
+- `POST /api/auth/2fa/disable` — verify TOTP + deactivate 2FA
+- `POST /api/auth/2fa/verify-login` — complete 2FA login step
 
-**DB Tables:** `users`, `site_settings`, `user_sessions` (session store), `email_addresses` (with userId FK), `messages`, `blocked_senders`
+**Developer API Routes:**
+- `GET /api/developer/keys` — list API keys
+- `POST /api/developer/keys` — create API key (returns raw key once only)
+- `DELETE /api/developer/keys/:id` — delete API key
+- `GET /api/developer/webhooks` — list webhooks
+- `POST /api/developer/webhooks` — create webhook (returns secret once only)
+- `PATCH /api/developer/webhooks/:id` — toggle active
+- `DELETE /api/developer/webhooks/:id` — delete webhook
+- `POST /api/developer/webhooks/:id/test` — send test payload
+
+**DB Tables:** `users`, `site_settings`, `user_sessions`, `email_addresses`, `messages`, `blocked_senders`, `api_keys`, `webhooks`, `user_two_factor`
+
+**2FA:** TOTP via `speakeasy` library + QR code via `qrcode`. Backup codes (8x hex) generated on enable.
+
+**API Key Auth:** Use `X-API-Key: tmk_xxx` header. Keys start with `tmk_`, prefix stored plaintext for lookup, hash stored for verification. Middleware: `requireAuthOrApiKey` in `lib/auth.ts`.
+
+**Webhook Signature:** HMAC-SHA256 over JSON body using webhook secret, sent in `X-TempMail-Signature` header.
 
 **Session note:** `user_sessions` table is auto-created on API server startup via `ensureSessionTable()` in `index.ts`.
 

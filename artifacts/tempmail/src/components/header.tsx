@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link } from "wouter";
-import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, User, ShieldCheck, LayoutDashboard, LogOut } from "lucide-react";
+import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, User, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle } from "lucide-react";
 import { useTheme } from "./theme-provider";
 import { useSound } from "@/hooks/use-sound";
 import { useAuth } from "@/hooks/use-auth";
@@ -81,6 +81,18 @@ export function Header({ rightSlot }: HeaderProps) {
                     <Link href="/dashboard" className="flex items-center gap-2 cursor-pointer">
                       <LayoutDashboard className="h-4 w-4" />
                       Dashboard Saya
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="flex items-center gap-2 cursor-pointer">
+                      <UserCircle className="h-4 w-4" />
+                      Profil & Keamanan
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/developer" className="flex items-center gap-2 cursor-pointer">
+                      <Code2 className="h-4 w-4" />
+                      Developer Tools
                     </Link>
                   </DropdownMenuItem>
                   {user.role === "admin" && (
