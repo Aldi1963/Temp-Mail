@@ -95,6 +95,13 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [editSettings, setEditSettings] = useState<Partial<SiteSettings>>({});
   const [newDomain, setNewDomain] = useState("");
+  const [dnsTarget, setDnsTarget] = useState("");
+  const [dnsChecking, setDnsChecking] = useState(false);
+  const [dnsResult, setDnsResult] = useState<{
+    domain: string; a: string[]; cname: string[]; mx: { exchange: string; priority: number }[];
+    status: "ok" | "partial" | "error"; summary: string;
+  } | null>(null);
+  const [guideType, setGuideType] = useState<"subdomain" | "root">("subdomain");
 
   useEffect(() => {
     if (!user) { navigate("/login"); return; }
@@ -147,6 +154,21 @@ export default function AdminPage() {
   };
   const removeDomain = (d: string) => {
     set("available_domains", JSON.stringify(getDomains().filter((x) => x !== d)));
+  };
+
+  const checkDns = async () => {
+    const d = dnsTarget.trim().toLowerCase();
+    if (!d || !d.includes(".")) { toast({ title: "Masukkan domain yang valid", variant: "destructive" }); return; }
+    setDnsChecking(true);
+    setDnsResult(null);
+    try {
+      const data = await adminApi(`/api/admin/dns-check?domain=${encodeURIComponent(d)}`);
+      setDnsResult(data);
+    } catch (err: unknown) {
+      toast({ title: "Gagal cek DNS", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally {
+      setDnsChecking(false);
+    }
   };
 
   const handleRoleChange = async (id: number, role: string) => {
@@ -580,9 +602,10 @@ export default function AdminPage() {
             <>
               <div>
                 <h1 className="text-xl font-bold">Manajemen Domain</h1>
-                <p className="text-sm text-muted-foreground mt-1">Tambah atau hapus domain yang tersedia untuk generate email.</p>
+                <p className="text-sm text-muted-foreground mt-1">Tambah, hapus, dan verifikasi domain email yang tersedia.</p>
               </div>
 
+              {/* Daftar Domain */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Domain Tersedia</CardTitle>
@@ -618,12 +641,20 @@ export default function AdminPage() {
                             <p className="text-xs text-muted-foreground">Email aktif: user@{d}</p>
                           </div>
                         </div>
-                        <Button
-                          variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-primary"
+                            onClick={() => { setDnsTarget(d); setActive("domains"); }}
+                          >
+                            Tes DNS
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -631,6 +662,183 @@ export default function AdminPage() {
                     <Save className="h-4 w-4" />
                     {saving ? "Menyimpan..." : "Simpan Perubahan"}
                   </Button>
+                </CardContent>
+              </Card>
+
+              {/* Panduan Pemasangan Domain */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Info className="h-4 w-4" /> Panduan Pemasangan Domain
+                  </CardTitle>
+                  <CardDescription>Langkah-langkah menghubungkan domain kustom ke aplikasi ini.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Pilih tipe */}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm" variant={guideType === "subdomain" ? "default" : "outline"}
+                      onClick={() => setGuideType("subdomain")}
+                    >Subdomain (mail.domain.com)</Button>
+                    <Button
+                      size="sm" variant={guideType === "root" ? "default" : "outline"}
+                      onClick={() => setGuideType("root")}
+                    >Root Domain (domain.com)</Button>
+                  </div>
+
+                  <ol className="space-y-4">
+                    {/* Langkah 1 */}
+                    <li className="flex gap-3">
+                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">1</div>
+                      <div>
+                        <p className="text-sm font-medium">Publish aplikasi di Replit</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Klik tombol <strong>Publish</strong> di Replit. Aplikasi akan tersedia di domain <code className="bg-muted px-1 rounded text-xs">*.replit.app</code>. Catat domain tersebut — kita butuh nanti.</p>
+                      </div>
+                    </li>
+
+                    {/* Langkah 2 */}
+                    <li className="flex gap-3">
+                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">2</div>
+                      <div>
+                        <p className="text-sm font-medium">Daftarkan custom domain di Replit</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Buka halaman deployment → <strong>Custom Domain</strong> → masukkan domain Anda. Replit akan memberi DNS record yang harus dipasang.</p>
+                      </div>
+                    </li>
+
+                    {/* Langkah 3 */}
+                    <li className="flex gap-3">
+                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">3</div>
+                      <div>
+                        <p className="text-sm font-medium">Tambahkan DNS Record di panel domain Anda</p>
+                        <p className="text-xs text-muted-foreground mt-1 mb-2">Buka Cloudflare / Namecheap / panel DNS lainnya, lalu tambahkan record berikut:</p>
+                        {guideType === "subdomain" ? (
+                          <div className="bg-muted rounded-lg p-3 font-mono text-xs space-y-1 border border-border">
+                            <div className="grid grid-cols-3 gap-2 text-muted-foreground text-[10px] font-sans mb-1">
+                              <span>TYPE</span><span>NAME</span><span>VALUE</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <span className="text-blue-500 font-bold">CNAME</span>
+                              <span>mail</span>
+                              <span className="truncate">nama-project.username.replit.app</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-muted rounded-lg p-3 font-mono text-xs space-y-1 border border-border">
+                            <div className="grid grid-cols-3 gap-2 text-muted-foreground text-[10px] font-sans mb-1">
+                              <span>TYPE</span><span>NAME</span><span>VALUE</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <span className="text-green-500 font-bold">A</span>
+                              <span>@</span>
+                              <span>(IP dari Replit)</span>
+                            </div>
+                          </div>
+                        )}
+                        {guideType === "subdomain" && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            <strong>Cloudflare:</strong> Pastikan ikon awan berwarna <strong>abu-abu</strong> (proxy OFF), bukan oranye. Proxy ON akan mencegah Replit menerbitkan SSL.
+                          </p>
+                        )}
+                      </div>
+                    </li>
+
+                    {/* Langkah 4 */}
+                    <li className="flex gap-3">
+                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">4</div>
+                      <div>
+                        <p className="text-sm font-medium">Tunggu propagasi DNS (5–60 menit)</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Setelah record disimpan, DNS perlu waktu untuk menyebar. Gunakan alat <strong>Tes DNS</strong> di bawah untuk memantau statusnya.</p>
+                      </div>
+                    </li>
+
+                    {/* Langkah 5 */}
+                    <li className="flex gap-3">
+                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">5</div>
+                      <div>
+                        <p className="text-sm font-medium">Verifikasi di Replit & tambah ke daftar domain</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Kembali ke Replit → klik <strong>Verify</strong>. Jika berhasil, tambahkan domain ke daftar di atas agar bisa digunakan untuk generate email.</p>
+                      </div>
+                    </li>
+                  </ol>
+                </CardContent>
+              </Card>
+
+              {/* Tes DNS */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Search className="h-4 w-4" /> Tes Koneksi DNS
+                  </CardTitle>
+                  <CardDescription>Periksa apakah domain sudah terdaftar dan mengarah dengan benar.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="contoh: mail.domain.com"
+                      value={dnsTarget}
+                      onChange={(e) => { setDnsTarget(e.target.value); setDnsResult(null); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") checkDns(); }}
+                      className="flex-1"
+                    />
+                    <Button onClick={checkDns} disabled={dnsChecking} className="gap-1.5 shrink-0">
+                      <RefreshCw className={`h-4 w-4 ${dnsChecking ? "animate-spin" : ""}`} />
+                      {dnsChecking ? "Mengecek..." : "Cek DNS"}
+                    </Button>
+                  </div>
+
+                  {dnsResult && (
+                    <div className={`rounded-lg border p-4 space-y-3 ${
+                      dnsResult.status === "ok" ? "border-green-500/40 bg-green-500/5"
+                      : dnsResult.status === "partial" ? "border-yellow-500/40 bg-yellow-500/5"
+                      : "border-destructive/40 bg-destructive/5"
+                    }`}>
+                      {/* Status Badge */}
+                      <div className="flex items-center gap-2">
+                        {dnsResult.status === "ok" && <CheckCircle className="h-4 w-4 text-green-500" />}
+                        {dnsResult.status === "partial" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                        {dnsResult.status === "error" && <ShieldX className="h-4 w-4 text-destructive" />}
+                        <span className={`text-sm font-medium ${
+                          dnsResult.status === "ok" ? "text-green-600 dark:text-green-400"
+                          : dnsResult.status === "partial" ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-destructive"
+                        }`}>
+                          {dnsResult.status === "ok" ? "DNS OK" : dnsResult.status === "partial" ? "Sebagian Ditemukan" : "Tidak Ditemukan"}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-auto font-mono">{dnsResult.domain}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{dnsResult.summary}</p>
+                      <Separator />
+                      <div className="space-y-2 text-xs">
+                        {dnsResult.a.length > 0 && (
+                          <div className="flex gap-2">
+                            <span className="text-muted-foreground w-16 shrink-0">A Record</span>
+                            <div className="flex flex-wrap gap-1">
+                              {dnsResult.a.map(ip => <code key={ip} className="bg-muted px-1.5 py-0.5 rounded font-mono">{ip}</code>)}
+                            </div>
+                          </div>
+                        )}
+                        {dnsResult.cname.length > 0 && (
+                          <div className="flex gap-2">
+                            <span className="text-muted-foreground w-16 shrink-0">CNAME</span>
+                            <div className="flex flex-wrap gap-1">
+                              {dnsResult.cname.map(c => <code key={c} className="bg-muted px-1.5 py-0.5 rounded font-mono">{c}</code>)}
+                            </div>
+                          </div>
+                        )}
+                        {dnsResult.mx.length > 0 && (
+                          <div className="flex gap-2">
+                            <span className="text-muted-foreground w-16 shrink-0">MX</span>
+                            <div className="flex flex-wrap gap-1">
+                              {dnsResult.mx.map(m => <code key={m.exchange} className="bg-muted px-1.5 py-0.5 rounded font-mono">{m.priority} {m.exchange}</code>)}
+                            </div>
+                          </div>
+                        )}
+                        {dnsResult.a.length === 0 && dnsResult.cname.length === 0 && dnsResult.mx.length === 0 && (
+                          <p className="text-muted-foreground italic">Tidak ada DNS record yang ditemukan. Periksa konfigurasi DNS Anda.</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </>

@@ -3,7 +3,13 @@ import { db } from "@workspace/db";
 import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable } from "@workspace/db";
 import { eq, count, desc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import dns from "dns";
+import { promisify } from "util";
 import { requireAdmin } from "../lib/auth.js";
+
+const dnsResolve4 = promisify(dns.resolve4);
+const dnsResolveCname = promisify(dns.resolveCname);
+const dnsResolveMx = promisify(dns.resolveMx);
 
 const router = Router();
 
@@ -128,6 +134,43 @@ router.patch("/settings/:key", async (req, res) => {
     .values({ key, value: String(value), updatedAt: new Date() })
     .onConflictDoUpdate({ target: siteSettingsTable.key, set: { value: String(value), updatedAt: new Date() } });
   res.json({ success: true, message: `Setting '${key}' berhasil diperbarui.` });
+});
+
+// --- DNS Check ---
+router.get("/dns-check", async (req, res) => {
+  const domain = (req.query.domain as string || "").trim().toLowerCase();
+  if (!domain || !domain.includes(".")) {
+    res.status(400).json({ error: "Bad request", message: "Domain tidak valid." });
+    return;
+  }
+
+  const result: {
+    domain: string;
+    a: string[];
+    cname: string[];
+    mx: { exchange: string; priority: number }[];
+    status: "ok" | "partial" | "error";
+    summary: string;
+  } = { domain, a: [], cname: [], mx: [], status: "error", summary: "" };
+
+  await Promise.allSettled([
+    dnsResolve4(domain).then((r) => { result.a = r; }).catch(() => {}),
+    dnsResolveCname(domain).then((r) => { result.cname = r; }).catch(() => {}),
+    dnsResolveMx(domain).then((r) => { result.mx = r.map(m => ({ exchange: m.exchange, priority: m.priority })); }).catch(() => {}),
+  ]);
+
+  if (result.a.length > 0 || result.cname.length > 0) {
+    result.status = "ok";
+    result.summary = `Domain ditemukan. ${result.a.length > 0 ? `A record: ${result.a.join(", ")}` : `CNAME: ${result.cname.join(", ")}`}`;
+  } else if (result.mx.length > 0) {
+    result.status = "partial";
+    result.summary = "MX record ditemukan, tapi A/CNAME belum terdaftar.";
+  } else {
+    result.status = "error";
+    result.summary = "Tidak ada DNS record yang ditemukan untuk domain ini.";
+  }
+
+  res.json(result);
 });
 
 export { router as adminRouter };
