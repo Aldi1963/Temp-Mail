@@ -162,6 +162,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /email/extend:
+    post:
+      operationId: extendEmail
+      tags: [email]
+      summary: Extend the TTL of a temporary email address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtendEmailRequest"
+      responses:
+        "200":
+          description: Email session extended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtendEmailResponse"
+        "404":
+          description: Email not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /email/domains:
     get:
       operationId: getAvailableDomains
@@ -378,6 +403,32 @@ components:
         - unreadCount
         - expiresAt
         - isExpired
+
+    ExtendEmailRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        extraMinutes:
+          type: integer
+          description: How many minutes to extend (default 30)
+      required:
+        - email
+
+    ExtendEmailResponse:
+      type: object
+      properties:
+        email:
+          type: string
+        newExpiresAt:
+          type: string
+          format: date-time
+        extended:
+          type: boolean
+      required:
+        - email
+        - newExpiresAt
+        - extended
 
     SuccessResponse:
       type: object

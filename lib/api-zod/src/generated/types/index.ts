@@ -12,6 +12,8 @@ export * from "./emailMessage";
 export * from "./emailMessageSummary";
 export * from "./emailStats";
 export * from "./errorResponse";
+export * from "./extendEmailRequest";
+export * from "./extendEmailResponse";
 export * from "./generatedEmail";
 export * from "./generateEmailParams";
 export * from "./getEmailStatsParams";

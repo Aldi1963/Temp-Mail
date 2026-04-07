@@ -108,6 +108,23 @@ export const ResetInboxResponse = zod.object({
 });
 
 /**
+ * @summary Extend the TTL of a temporary email address
+ */
+export const ExtendEmailBody = zod.object({
+  email: zod.string(),
+  extraMinutes: zod
+    .number()
+    .optional()
+    .describe("How many minutes to extend (default 30)"),
+});
+
+export const ExtendEmailResponse = zod.object({
+  email: zod.string(),
+  newExpiresAt: zod.coerce.date(),
+  extended: zod.boolean(),
+});
+
+/**
  * @summary Get list of available email domains
  */
 export const GetAvailableDomainsResponse = zod.object({

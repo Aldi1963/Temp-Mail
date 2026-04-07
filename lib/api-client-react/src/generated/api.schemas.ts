@@ -77,6 +77,18 @@ export interface EmailStats {
   isExpired: boolean;
 }
 
+export interface ExtendEmailRequest {
+  email: string;
+  /** How many minutes to extend (default 30) */
+  extraMinutes?: number;
+}
+
+export interface ExtendEmailResponse {
+  email: string;
+  newExpiresAt: string;
+  extended: boolean;
+}
+
 export interface SuccessResponse {
   success: boolean;
   message: string;

@@ -1,47 +1,76 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Header } from "@/components/header";
 import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
 import { MessageViewer } from "@/components/message-viewer";
+import { InboxSwitcher } from "@/components/inbox-switcher";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useSound } from "@/hooks/use-sound";
 import { useToast } from "@/hooks/use-toast";
 import { useGetInbox, getGetInboxQueryKey } from "@workspace/api-client-react";
 
+interface InboxEntry {
+  email: string;
+  addedAt: string;
+}
+
+const MAX_INBOXES = 5;
+
 export default function Home() {
-  const [activeEmail, setActiveEmail] = useLocalStorage<string | null>("tempmail_active_email", null);
+  const [activeEmail, setActiveEmailRaw] = useLocalStorage<string | null>("tempmail_active_email", null);
+  const [inboxList, setInboxList] = useLocalStorage<InboxEntry[]>("tempmail_inbox_list", []);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  
+
   const { playChime } = useSound();
   const { toast } = useToast();
-  
   const prevTotalRef = useRef<number>(0);
+
+  // When setting active email, also register it in the inbox list
+  const setActiveEmail = useCallback((email: string) => {
+    setActiveEmailRaw(email);
+    setInboxList((prev) => {
+      const exists = prev.some((e) => e.email === email);
+      if (exists) return prev;
+      const updated = [{ email, addedAt: new Date().toISOString() }, ...prev];
+      return updated.slice(0, MAX_INBOXES);
+    });
+  }, [setActiveEmailRaw, setInboxList]);
+
+  const removeFromList = useCallback((email: string) => {
+    setInboxList((prev) => prev.filter((e) => e.email !== email));
+    if (activeEmail === email) {
+      const remaining = inboxList.filter((e) => e.email !== email);
+      setActiveEmailRaw(remaining.length > 0 ? remaining[0].email : null);
+    }
+  }, [activeEmail, inboxList, setActiveEmailRaw, setInboxList]);
+
+  const switchToInbox = useCallback((email: string) => {
+    setActiveEmailRaw(email);
+  }, [setActiveEmailRaw]);
 
   const { data: inbox, isLoading } = useGetInbox(
     { email: activeEmail! },
-    { 
-      query: { 
-        enabled: !!activeEmail, 
-        refetchInterval: 5000, 
-        queryKey: getGetInboxQueryKey({ email: activeEmail! }) 
-      } 
+    {
+      query: {
+        enabled: !!activeEmail,
+        refetchInterval: 5000,
+        queryKey: getGetInboxQueryKey({ email: activeEmail! }),
+      },
     }
   );
 
-  // Handle new incoming mail notifications
+  // New mail notifications
   useEffect(() => {
     if (inbox && inbox.total > prevTotalRef.current) {
-      // New mail arrived
-      if (prevTotalRef.current > 0) { // Don't notify on initial load
+      if (prevTotalRef.current > 0) {
         playChime();
         toast({
-          title: "New Mail Arrived",
-          description: "You have a new message in your inbox.",
+          title: "Email Baru Masuk",
+          description: "Ada pesan baru di inbox Anda.",
         });
       }
       prevTotalRef.current = inbox.total;
     } else if (inbox && inbox.total < prevTotalRef.current) {
-      // Mail was deleted/reset
       prevTotalRef.current = inbox.total;
     }
   }, [inbox?.total, playChime, toast]);
@@ -49,42 +78,50 @@ export default function Home() {
   // Reset selected message when email changes
   useEffect(() => {
     setSelectedMessageId(null);
-    prevTotalRef.current = 0; // Reset counter for new inbox
+    prevTotalRef.current = 0;
   }, [activeEmail]);
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
-      <Header />
-      
+      <Header
+        rightSlot={
+          <InboxSwitcher
+            activeEmail={activeEmail}
+            inboxList={inboxList}
+            onSwitch={switchToInbox}
+            onAdd={() => setActiveEmailRaw(null)}
+            onRemove={removeFromList}
+          />
+        }
+      />
+
       <main className="flex-1 container max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left/Top Pane: Controls & Stats */}
-        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-6">
-          <EmailPane 
-            activeEmail={activeEmail} 
-            setActiveEmail={setActiveEmail} 
+
+        {/* Left: Address + Stats */}
+        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
+          <EmailPane
+            activeEmail={activeEmail}
+            setActiveEmail={setActiveEmail}
           />
         </div>
-        
-        {/* Right/Bottom Pane: Inbox & Viewer */}
+
+        {/* Right: Inbox list + Viewer */}
         <div className="lg:col-span-8 xl:col-span-9 flex flex-col lg:flex-row gap-6 min-h-[500px]">
-          
-          {/* List view: Hide on mobile if a message is selected */}
-          <div className={`w-full lg:w-[350px] xl:w-[400px] flex-shrink-0 flex flex-col ${selectedMessageId ? 'hidden lg:flex' : 'flex'}`}>
-            <InboxList 
-              messages={inbox?.messages || []} 
+
+          <div className={`w-full lg:w-[350px] xl:w-[400px] flex-shrink-0 flex flex-col ${selectedMessageId ? "hidden lg:flex" : "flex"}`}>
+            <InboxList
+              messages={inbox?.messages || []}
               isLoading={isLoading && !!activeEmail}
               selectedMessageId={selectedMessageId}
               onSelectMessage={setSelectedMessageId}
             />
           </div>
-          
-          {/* Detail view: Hide if no message selected (on mobile) */}
-          <div className={`w-full flex-1 flex flex-col ${!selectedMessageId ? 'hidden lg:flex' : 'flex'}`}>
+
+          <div className={`w-full flex-1 flex flex-col ${!selectedMessageId ? "hidden lg:flex" : "flex"}`}>
             {selectedMessageId ? (
-              <MessageViewer 
-                messageId={selectedMessageId} 
-                email={activeEmail!} 
+              <MessageViewer
+                messageId={selectedMessageId}
+                email={activeEmail!}
                 onBack={() => setSelectedMessageId(null)}
               />
             ) : (
@@ -95,16 +132,15 @@ export default function Home() {
                     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-semibold text-foreground">No message selected</h3>
-                <p className="text-muted-foreground mt-2 max-w-sm">
-                  Select a message from the list to read its contents. Your temporary email is active and receiving messages.
+                <h3 className="text-xl font-semibold text-foreground">Belum ada pesan dipilih</h3>
+                <p className="text-muted-foreground mt-2 max-w-sm text-sm">
+                  Pilih pesan dari daftar untuk membacanya. Email sementara Anda aktif dan siap menerima pesan.
                 </p>
               </div>
             )}
           </div>
-          
+
         </div>
-        
       </main>
     </div>
   );

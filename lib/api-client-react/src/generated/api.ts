@@ -21,6 +21,8 @@ import type {
   EmailMessage,
   EmailStats,
   ErrorResponse,
+  ExtendEmailRequest,
+  ExtendEmailResponse,
   GenerateEmailParams,
   GeneratedEmail,
   GetEmailStatsParams,
@@ -580,6 +582,92 @@ export const useResetInbox = <
   TContext
 > => {
   return useMutation(getResetInboxMutationOptions(options));
+};
+
+/**
+ * @summary Extend the TTL of a temporary email address
+ */
+export const getExtendEmailUrl = () => {
+  return `/api/email/extend`;
+};
+
+export const extendEmail = async (
+  extendEmailRequest: ExtendEmailRequest,
+  options?: RequestInit,
+): Promise<ExtendEmailResponse> => {
+  return customFetch<ExtendEmailResponse>(getExtendEmailUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(extendEmailRequest),
+  });
+};
+
+export const getExtendEmailMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof extendEmail>>,
+    TError,
+    { data: BodyType<ExtendEmailRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof extendEmail>>,
+  TError,
+  { data: BodyType<ExtendEmailRequest> },
+  TContext
+> => {
+  const mutationKey = ["extendEmail"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof extendEmail>>,
+    { data: BodyType<ExtendEmailRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return extendEmail(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ExtendEmailMutationResult = NonNullable<
+  Awaited<ReturnType<typeof extendEmail>>
+>;
+export type ExtendEmailMutationBody = BodyType<ExtendEmailRequest>;
+export type ExtendEmailMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Extend the TTL of a temporary email address
+ */
+export const useExtendEmail = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof extendEmail>>,
+    TError,
+    { data: BodyType<ExtendEmailRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof extendEmail>>,
+  TError,
+  { data: BodyType<ExtendEmailRequest> },
+  TContext
+> => {
+  return useMutation(getExtendEmailMutationOptions(options));
 };
 
 /**

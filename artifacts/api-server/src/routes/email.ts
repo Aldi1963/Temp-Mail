@@ -10,6 +10,7 @@ import {
   MarkMessageReadBody,
   ResetInboxQueryParams,
   GetEmailStatsQueryParams,
+  ExtendEmailBody,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -232,6 +233,32 @@ router.get("/stats", async (req, res) => {
     expiresAt: addr.expiresAt.toISOString(),
     isExpired: addr.expiresAt < now,
   });
+});
+
+router.post("/extend", async (req, res) => {
+  const parsed = ExtendEmailBody.safeParse(req.body);
+  if (!parsed.success || !parsed.data.email) {
+    res.status(400).json({ error: "Bad request", message: "email is required" });
+    return;
+  }
+
+  const { email, extraMinutes } = parsed.data;
+  const extra = (extraMinutes ?? 30) * 60 * 1000;
+
+  const results = await db.select().from(emailAddressesTable).where(eq(emailAddressesTable.email, email)).limit(1);
+  if (results.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Email address not found" });
+    return;
+  }
+
+  const current = results[0];
+  const base = current.expiresAt > new Date() ? current.expiresAt : new Date();
+  const newExpiresAt = new Date(base.getTime() + extra);
+
+  await db.update(emailAddressesTable).set({ expiresAt: newExpiresAt }).where(eq(emailAddressesTable.email, email));
+  await db.update(messagesTable).set({ expiresAt: newExpiresAt }).where(eq(messagesTable.email, email));
+
+  res.json({ email, newExpiresAt: newExpiresAt.toISOString(), extended: true });
 });
 
 export { router as emailRouter, generateMessageId, SESSION_TTL_MS, AVAILABLE_DOMAINS };

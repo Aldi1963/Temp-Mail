@@ -1,9 +1,14 @@
+import { ReactNode } from "react";
 import { Mail, Moon, Sun, Volume2, VolumeX } from "lucide-react";
 import { useTheme } from "./theme-provider";
 import { useSound } from "@/hooks/use-sound";
 import { Button } from "./ui/button";
 
-export function Header() {
+interface HeaderProps {
+  rightSlot?: ReactNode;
+}
+
+export function Header({ rightSlot }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } = useSound();
 
@@ -16,26 +21,28 @@ export function Header() {
           </div>
           TempMail
         </div>
-        
+
         <div className="flex items-center gap-2">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          {rightSlot}
+
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setSoundEnabled(!soundEnabled)}
-            title={soundEnabled ? "Mute sounds" : "Enable sounds"}
+            title={soundEnabled ? "Matikan suara" : "Aktifkan suara"}
             className="text-muted-foreground hover:text-foreground"
           >
-            {soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+            {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </Button>
-          
+
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            title="Toggle theme"
+            title="Ganti tema"
             className="text-muted-foreground hover:text-foreground"
           >
-            {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         </div>
       </div>
