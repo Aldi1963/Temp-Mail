@@ -24,10 +24,13 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     res.status(401).json({ error: "Unauthorized", message: "Silakan login terlebih dahulu." });
     return;
   }
-  if (req.session.userRole !== "admin") {
+  const results = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId)).limit(1);
+  const user = results[0];
+  if (!user || user.role !== "admin") {
     res.status(403).json({ error: "Forbidden", message: "Akses admin diperlukan." });
     return;
   }
+  req.session.userRole = user.role;
   next();
 }
 
