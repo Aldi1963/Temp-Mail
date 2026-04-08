@@ -650,25 +650,25 @@ export default function AdminPage() {
                     ) : getDomains().length === 0 ? (
                       <div className="p-8 text-center text-muted-foreground text-sm">Belum ada domain.</div>
                     ) : getDomains().map((d) => (
-                      <div key={d} className="flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <div key={d} className="flex items-center gap-2 p-3 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                             <Globe className="h-4 w-4 text-primary" />
                           </div>
-                          <div>
-                            <span className="font-mono text-sm font-medium">@{d}</span>
-                            <p className="text-xs text-muted-foreground">Email aktif: user@{d}</p>
+                          <div className="min-w-0">
+                            <span className="font-mono text-sm font-medium block truncate">@{d}</span>
+                            <p className="text-xs text-muted-foreground truncate">Email aktif: user@{d}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 shrink-0">
                           <Button
-                            variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-primary"
+                            variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-primary px-2"
                             onClick={() => { setDnsTarget(d); setActive("domains"); }}
                           >
                             Tes DNS
                           </Button>
                           <Button
-                            variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -694,14 +694,16 @@ export default function AdminPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Pilih tipe */}
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       size="sm" variant={guideType === "subdomain" ? "default" : "outline"}
                       onClick={() => setGuideType("subdomain")}
+                      className="flex-1 text-xs sm:text-sm"
                     >Subdomain (mail.domain.com)</Button>
                     <Button
                       size="sm" variant={guideType === "root" ? "default" : "outline"}
                       onClick={() => setGuideType("root")}
+                      className="flex-1 text-xs sm:text-sm"
                     >Root Domain (domain.com)</Button>
                   </div>
 
@@ -813,18 +815,18 @@ export default function AdminPage() {
                       : "border-destructive/40 bg-destructive/5"
                     }`}>
                       {/* Status Badge */}
-                      <div className="flex items-center gap-2">
-                        {dnsResult.status === "ok" && <CheckCircle className="h-4 w-4 text-green-500" />}
-                        {dnsResult.status === "partial" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
-                        {dnsResult.status === "error" && <ShieldX className="h-4 w-4 text-destructive" />}
-                        <span className={`text-sm font-medium ${
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {dnsResult.status === "ok" && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
+                        {dnsResult.status === "partial" && <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}
+                        {dnsResult.status === "error" && <ShieldX className="h-4 w-4 text-destructive shrink-0" />}
+                        <span className={`text-sm font-medium shrink-0 ${
                           dnsResult.status === "ok" ? "text-green-600 dark:text-green-400"
                           : dnsResult.status === "partial" ? "text-yellow-600 dark:text-yellow-400"
                           : "text-destructive"
                         }`}>
                           {dnsResult.status === "ok" ? "DNS OK" : dnsResult.status === "partial" ? "Sebagian Ditemukan" : "Tidak Ditemukan"}
                         </span>
-                        <span className="text-xs text-muted-foreground ml-auto font-mono">{dnsResult.domain}</span>
+                        <span className="text-xs text-muted-foreground font-mono truncate ml-auto min-w-0">{dnsResult.domain}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">{dnsResult.summary}</p>
                       <Separator />
