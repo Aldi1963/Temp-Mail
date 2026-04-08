@@ -1,9 +1,17 @@
 import { format } from "date-fns";
-import { Search, Mail, MailOpen, AlertCircle, RefreshCw, CheckCheck } from "lucide-react";
+import { Search, Mail, MailOpen, AlertCircle, RefreshCw, CheckCheck, ArrowUpDown, Bell, BellOff } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EmailMessageSummary } from "@workspace/api-client-react";
 
 interface InboxListProps {
@@ -13,9 +21,12 @@ interface InboxListProps {
   onSelectMessage: (id: string) => void;
   onRefresh?: () => void;
   onMarkAllRead?: () => void;
+  notifPermission?: NotificationPermission | "unsupported";
+  onRequestNotif?: () => void;
 }
 
 type FilterType = "all" | "unread" | "read";
+type SortType = "newest" | "oldest" | "sender";
 
 export function InboxList({
   messages,
@@ -24,15 +35,18 @@ export function InboxList({
   onSelectMessage,
   onRefresh,
   onMarkAllRead,
+  notifPermission,
+  onRequestNotif,
 }: InboxListProps) {
   const [filter, setFilter] = useState<FilterType>("all");
+  const [sort, setSort] = useState<SortType>("newest");
   const [search, setSearch] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
 
   const filteredMessages = useMemo(() => {
-    return messages.filter((msg) => {
+    let result = messages.filter((msg) => {
       if (filter === "unread" && msg.isRead) return false;
       if (filter === "read" && !msg.isRead) return false;
       if (search) {
@@ -45,7 +59,19 @@ export function InboxList({
       }
       return true;
     });
-  }, [messages, filter, search]);
+
+    result = [...result].sort((a, b) => {
+      if (sort === "oldest") {
+        return new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
+      }
+      if (sort === "sender") {
+        return a.from.localeCompare(b.from);
+      }
+      return new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
+    });
+
+    return result;
+  }, [messages, filter, search, sort]);
 
   const handleRefresh = async () => {
     if (!onRefresh) return;
@@ -53,6 +79,8 @@ export function InboxList({
     onRefresh();
     setTimeout(() => setIsRefreshing(false), 600);
   };
+
+  const sortLabel = sort === "newest" ? "Terbaru" : sort === "oldest" ? "Terlama" : "Pengirim";
 
   return (
     <div className="flex flex-col h-full bg-card rounded-lg border border-border shadow-sm overflow-hidden flex-1 min-h-[400px] sm:min-h-0">
@@ -62,13 +90,49 @@ export function InboxList({
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Cari email..."
+              placeholder="Cari email, pengirim..."
               className="pl-9 bg-background h-9 text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               data-testid="inbox-search"
             />
           </div>
+
+          {/* Sort dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 text-muted-foreground hover:text-primary"
+                title={`Urutan: ${sortLabel}`}
+              >
+                <ArrowUpDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Urutkan berdasarkan</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className={`text-xs cursor-pointer ${sort === "newest" ? "font-semibold text-primary" : ""}`}
+                onClick={() => setSort("newest")}
+              >
+                Terbaru dulu
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={`text-xs cursor-pointer ${sort === "oldest" ? "font-semibold text-primary" : ""}`}
+                onClick={() => setSort("oldest")}
+              >
+                Terlama dulu
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={`text-xs cursor-pointer ${sort === "sender" ? "font-semibold text-primary" : ""}`}
+                onClick={() => setSort("sender")}
+              >
+                Nama pengirim
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {unreadCount > 0 && (
             <Button
@@ -110,6 +174,26 @@ export function InboxList({
             </Button>
           ))}
         </div>
+
+        {/* Notification permission banner */}
+        {notifPermission === "default" && onRequestNotif && (
+          <button
+            onClick={onRequestNotif}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 hover:bg-primary/10 transition-colors text-left"
+          >
+            <Bell className="h-4 w-4 text-primary shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-primary">Aktifkan Notifikasi Browser</p>
+              <p className="text-[11px] text-muted-foreground">Dapat pemberitahuan saat email baru masuk</p>
+            </div>
+          </button>
+        )}
+        {notifPermission === "denied" && (
+          <div className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 text-left">
+            <BellOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <p className="text-[11px] text-muted-foreground">Notifikasi diblokir. Aktifkan di pengaturan browser.</p>
+          </div>
+        )}
       </div>
 
       <ScrollArea className="flex-1">

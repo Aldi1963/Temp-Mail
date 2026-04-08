@@ -1,6 +1,6 @@
 import { format } from "date-fns";
-import { ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert, Copy, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -112,6 +112,7 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
   const queryClient = useQueryClient();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
 
   const { data: message, isLoading, isError } = useGetMessage(
     { id: messageId, email },
@@ -162,6 +163,24 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
         },
       }
     );
+  };
+
+  const copyEmailContent = () => {
+    if (!message) return;
+    const plain = message.textBody || message.htmlBody?.replace(/<[^>]*>/g, "") || "";
+    const full = [
+      `Dari: ${message.from}`,
+      `Ke: ${message.to}`,
+      `Subjek: ${message.subject}`,
+      `Tanggal: ${format(new Date(message.receivedAt), "d MMM yyyy, HH:mm")}`,
+      ``,
+      plain,
+    ].join("\n");
+    navigator.clipboard.writeText(full).then(() => {
+      setCopied(true);
+      toast({ title: "Tersalin!", description: "Isi email telah disalin ke clipboard.", duration: 2000 });
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   const getSenderDomain = (from: string) => {
@@ -215,6 +234,18 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
         </h2>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Copy button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10"
+            title="Salin isi email"
+            onClick={copyEmailContent}
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? "Tersalin" : "Salin"}
+          </Button>
+
           {/* Block dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

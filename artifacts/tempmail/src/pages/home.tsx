@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Link } from "wouter";
 import { Header } from "@/components/header";
 import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
@@ -34,6 +35,22 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const prevTotalRef = useRef<number>(0);
+
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
+    () => {
+      if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+      return Notification.permission;
+    }
+  );
+
+  const requestNotifPermission = useCallback(async () => {
+    if (!("Notification" in window)) return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+    if (perm === "granted") {
+      toast({ title: "Notifikasi diaktifkan!", description: "Anda akan mendapat pemberitahuan saat email baru masuk." });
+    }
+  }, [toast]);
 
   const { hasPin, isUnlocked, setupPin, removePin, verifyPin, lock } = usePin();
   const markReadMutation = useMarkMessageRead();
@@ -85,6 +102,15 @@ export default function Home() {
       if (prevTotalRef.current > 0) {
         playChime();
         toast({ title: "Email Baru Masuk", description: "Ada pesan baru di inbox Anda." });
+
+        if ("Notification" in window && Notification.permission === "granted") {
+          const newCount = inbox.total - prevTotalRef.current;
+          new Notification("TempMail — Email Baru!", {
+            body: newCount === 1 ? "Ada 1 email baru di inbox Anda." : `Ada ${newCount} email baru di inbox Anda.`,
+            icon: "/favicon.ico",
+            tag: "tempmail-new-email",
+          });
+        }
       }
       prevTotalRef.current = inbox.total;
     } else if (inbox && inbox.total < prevTotalRef.current) {
@@ -175,6 +201,8 @@ export default function Home() {
               onSelectMessage={setSelectedMessageId}
               onRefresh={handleRefreshInbox}
               onMarkAllRead={handleMarkAllRead}
+              notifPermission={notifPermission}
+              onRequestNotif={requestNotifPermission}
             />
           </div>
 
@@ -213,6 +241,16 @@ export default function Home() {
 
         </div>
       </main>
+
+      <footer className="border-t border-border py-4 px-6 mt-auto">
+        <div className="container max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>© {new Date().getFullYear()} TempMail. Layanan email sementara gratis.</span>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">Kebijakan Privasi</Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">Syarat Layanan</Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

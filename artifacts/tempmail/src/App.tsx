@@ -12,6 +12,8 @@ import DashboardPage from "@/pages/dashboard";
 import AdminPage from "@/pages/admin";
 import DeveloperPage from "@/pages/developer";
 import ProfilePage from "@/pages/profile";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
 
@@ -51,6 +53,8 @@ function Router() {
       <Route path="/profile">
         {() => <ProtectedRoute component={ProfilePage} />}
       </Route>
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
       <Route component={NotFound} />
     </Switch>
   );
