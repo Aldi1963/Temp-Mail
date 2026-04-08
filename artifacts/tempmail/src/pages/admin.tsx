@@ -1010,43 +1010,154 @@ export default function AdminPage() {
                 <p className="text-sm text-muted-foreground mt-1">Ringkasan data penggunaan sistem secara keseluruhan.</p>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4">
+              {/* Stat Cards Utama */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
-                  { label: "Total Pengguna Terdaftar", value: stats?.totalUsers ?? 0, icon: Users, color: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300" },
-                  { label: "Total Email Dibuat", value: stats?.totalEmails ?? 0, icon: Mail, color: "bg-primary/10 text-primary" },
-                  { label: "Total Pesan Diterima", value: stats?.totalMessages ?? 0, icon: Inbox, color: "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300" },
-                  { label: "Rata-rata Pesan/Email", value: stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0", icon: BarChart2, color: "bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300" },
+                  {
+                    label: "Pengguna Terdaftar",
+                    value: stats?.totalUsers ?? 0,
+                    icon: Users,
+                    accent: "border-violet-500",
+                    iconBg: "bg-violet-100 dark:bg-violet-950/50",
+                    iconColor: "text-violet-600 dark:text-violet-400",
+                    valueColor: "text-violet-700 dark:text-violet-300",
+                    desc: "akun aktif",
+                  },
+                  {
+                    label: "Email Dibuat",
+                    value: stats?.totalEmails ?? 0,
+                    icon: Mail,
+                    accent: "border-primary",
+                    iconBg: "bg-primary/10",
+                    iconColor: "text-primary",
+                    valueColor: "text-primary",
+                    desc: "kotak masuk",
+                  },
+                  {
+                    label: "Pesan Diterima",
+                    value: stats?.totalMessages ?? 0,
+                    icon: Inbox,
+                    accent: "border-green-500",
+                    iconBg: "bg-green-100 dark:bg-green-950/50",
+                    iconColor: "text-green-600 dark:text-green-400",
+                    valueColor: "text-green-700 dark:text-green-300",
+                    desc: "total masuk",
+                  },
                 ].map((s) => (
-                  <Card key={s.label} className={`border-0 ${s.color}`}>
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <s.icon className="h-10 w-10 opacity-70 shrink-0" />
-                      <div>
-                        {loading ? <Skeleton className="h-9 w-20 mb-1" /> : <div className="text-3xl font-bold">{s.value}</div>}
-                        <div className="text-xs font-medium opacity-70">{s.label}</div>
+                  <Card key={s.label} className={`border-l-4 ${s.accent}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground font-medium mb-1">{s.label}</p>
+                          {loading
+                            ? <Skeleton className="h-9 w-20 mb-1" />
+                            : <p className={`text-3xl font-extrabold tracking-tight ${s.valueColor}`}>{s.value.toLocaleString("id-ID")}</p>
+                          }
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{s.desc}</p>
+                        </div>
+                        <div className={`${s.iconBg} p-2.5 rounded-xl shrink-0`}>
+                          <s.icon className={`h-5 w-5 ${s.iconColor}`} />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Informasi Sistem</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {[
-                    { label: "Nama Situs", value: settings?.site_name ?? "-" },
-                    { label: "Domain Tersedia", value: getDomains().map(d => `@${d}`).join(", ") || "-" },
-                    { label: "Default TTL", value: `${settings?.default_ttl_minutes ?? "10"} menit` },
-                    { label: "Max Inbox", value: `${settings?.max_inboxes ?? "5"} per user` },
-                    { label: "Registrasi", value: settings?.allow_registration === "true" ? "Dibuka" : "Ditutup" },
-                    { label: "Mode Pemeliharaan", value: settings?.maintenance_mode === "true" ? "Aktif" : "Nonaktif" },
-                  ].map((r) => (
-                    <div key={r.label} className="flex justify-between gap-4 text-sm border-b border-border/50 pb-2 last:border-0">
-                      <span className="text-muted-foreground shrink-0">{r.label}</span>
-                      <span className="font-medium text-right min-w-0 truncate">{r.value}</span>
+              {/* Metrik Turunan */}
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="bg-muted/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="bg-orange-100 dark:bg-orange-950/50 p-1.5 rounded-lg">
+                        <BarChart2 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                      </div>
+                      <p className="text-xs text-muted-foreground font-medium">Pesan / Email</p>
                     </div>
-                  ))}
+                    {loading
+                      ? <Skeleton className="h-8 w-16" />
+                      : <p className="text-2xl font-bold">
+                          {stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0"}
+                        </p>
+                    }
+                    <p className="text-[11px] text-muted-foreground mt-0.5">rata-rata</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-muted/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="bg-cyan-100 dark:bg-cyan-950/50 p-1.5 rounded-lg">
+                        <Zap className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                      </div>
+                      <p className="text-xs text-muted-foreground font-medium">Email / User</p>
+                    </div>
+                    {loading
+                      ? <Skeleton className="h-8 w-16" />
+                      : <p className="text-2xl font-bold">
+                          {stats?.totalUsers ? (stats.totalEmails / stats.totalUsers).toFixed(1) : "0"}
+                        </p>
+                    }
+                    <p className="text-[11px] text-muted-foreground mt-0.5">rata-rata</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Konfigurasi Sistem */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Info className="h-4 w-4" /> Konfigurasi Sistem
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-0 divide-y divide-border/50">
+                  {/* Status row */}
+                  <div className="flex items-center justify-between py-2.5 gap-3">
+                    <span className="text-sm text-muted-foreground shrink-0">Status Sistem</span>
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      settings?.maintenance_mode === "true"
+                        ? "bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300"
+                        : "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${settings?.maintenance_mode === "true" ? "bg-yellow-500" : "bg-green-500"}`} />
+                      {settings?.maintenance_mode === "true" ? "Pemeliharaan" : "Normal"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5 gap-3">
+                    <span className="text-sm text-muted-foreground shrink-0">Registrasi</span>
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      settings?.allow_registration === "true"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${settings?.allow_registration === "true" ? "bg-primary" : "bg-muted-foreground"}`} />
+                      {settings?.allow_registration === "true" ? "Dibuka" : "Ditutup"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5 gap-3">
+                    <span className="text-sm text-muted-foreground shrink-0">Nama Situs</span>
+                    <span className="text-sm font-medium truncate text-right max-w-[55%]">{settings?.site_name ?? "-"}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5 gap-3">
+                    <span className="text-sm text-muted-foreground shrink-0">TTL Email</span>
+                    <span className="text-sm font-medium">{settings?.default_ttl_minutes ?? "10"} menit</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5 gap-3">
+                    <span className="text-sm text-muted-foreground shrink-0">Max Inbox</span>
+                    <span className="text-sm font-medium">{settings?.max_inboxes ?? "5"} per user</span>
+                  </div>
+                  <div className="flex items-start justify-between py-2.5 gap-3">
+                    <span className="text-sm text-muted-foreground shrink-0 mt-0.5">Domain Aktif</span>
+                    <div className="flex flex-wrap gap-1.5 justify-end max-w-[60%]">
+                      {loading
+                        ? <Skeleton className="h-6 w-24 rounded-full" />
+                        : getDomains().map(d => (
+                          <span key={d} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-[11px] font-mono font-medium px-2 py-0.5 rounded-full">
+                            @{d}
+                          </span>
+                        ))
+                      }
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </>
