@@ -644,36 +644,32 @@ export default function AdminPage() {
                       Tambah
                     </Button>
                   </div>
-                  <div className="border border-border rounded-lg overflow-hidden divide-y divide-border">
+                  <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
                     {loading ? (
-                      [1,2,3].map(i => <Skeleton key={i} className="h-12 w-full rounded-none" />)
+                      [1,2,3].map(i => <Skeleton key={i} className="h-14 w-full rounded-none" />)
                     ) : getDomains().length === 0 ? (
                       <div className="p-8 text-center text-muted-foreground text-sm">Belum ada domain.</div>
                     ) : getDomains().map((d) => (
-                      <div key={d} className="flex items-center gap-2 p-3 hover:bg-muted/30 transition-colors">
-                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                          <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                            <Globe className="h-4 w-4 text-primary" />
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-mono text-sm font-medium block truncate">@{d}</span>
-                            <p className="text-xs text-muted-foreground truncate">Email aktif: user@{d}</p>
-                          </div>
+                      <div key={d} className="flex items-center gap-2 px-3 py-2.5">
+                        <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                          <Globe className="h-4 w-4 text-primary" />
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button
-                            variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-primary px-2"
-                            onClick={() => { setDnsTarget(d); setActive("domains"); }}
-                          >
-                            Tes DNS
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                        <div className="flex-1 min-w-0 mx-1">
+                          <p className="font-mono text-sm font-semibold truncate">@{d}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">user@{d}</p>
                         </div>
+                        <Button
+                          variant="outline" size="sm" className="h-7 text-xs px-2 shrink-0"
+                          onClick={() => { setDnsTarget(d); setActive("domains"); }}
+                        >
+                          Tes DNS
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -733,24 +729,26 @@ export default function AdminPage() {
                         <p className="text-sm font-medium">Tambahkan DNS Record di panel domain Anda</p>
                         <p className="text-xs text-muted-foreground mt-1 mb-2">Buka Cloudflare / Namecheap / panel DNS lainnya, lalu tambahkan record berikut:</p>
                         <div className="overflow-x-auto rounded-lg border border-border">
-                          <table className="w-full text-xs font-mono min-w-[260px] bg-muted">
+                          <table className="w-full text-xs font-mono bg-muted">
                             <thead>
                               <tr className="text-[10px] text-muted-foreground font-sans border-b border-border">
-                                <th className="text-left px-3 py-2">TYPE</th><th className="text-left px-3 py-2">NAME</th><th className="text-left px-3 py-2">VALUE</th>
+                                <th className="text-left px-2 py-2 w-14">TYPE</th>
+                                <th className="text-left px-2 py-2 w-10">NAME</th>
+                                <th className="text-left px-2 py-2">VALUE</th>
                               </tr>
                             </thead>
                             <tbody>
                               {guideType === "subdomain" ? (
                                 <tr>
-                                  <td className="px-3 py-2 text-blue-500 font-bold">CNAME</td>
-                                  <td className="px-3 py-2">mail</td>
-                                  <td className="px-3 py-2">nama-project.username.replit.app</td>
+                                  <td className="px-2 py-2 text-blue-500 font-bold">CNAME</td>
+                                  <td className="px-2 py-2">mail</td>
+                                  <td className="px-2 py-2 break-all">[project].replit.app</td>
                                 </tr>
                               ) : (
                                 <tr>
-                                  <td className="px-3 py-2 text-green-500 font-bold">A</td>
-                                  <td className="px-3 py-2">@</td>
-                                  <td className="px-3 py-2">(IP dari Replit)</td>
+                                  <td className="px-2 py-2 text-green-500 font-bold">A</td>
+                                  <td className="px-2 py-2">@</td>
+                                  <td className="px-2 py-2">(IP dari Replit)</td>
                                 </tr>
                               )}
                             </tbody>
@@ -1009,11 +1007,11 @@ export default function AdminPage() {
                   {/* Step 6 — Tambah domain */}
                   <div className="space-y-2">
                     <p className="text-sm font-semibold flex items-center gap-2">
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">6</span>
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">6</span>
                       Tambahkan Domain ke Daftar TempMail
                     </p>
                     <p className="text-xs text-muted-foreground pl-7">
-                      Setelah semua selesai, tambahkan domain Anda (misal <code className="bg-muted px-1 rounded">namadomain.com</code>) ke daftar Domain Tersedia di bagian atas halaman ini, lalu klik Simpan. Email dengan alamat <code className="bg-muted px-1 rounded">user@namadomain.com</code> akan langsung masuk ke inbox secara real-time.
+                      Tambahkan domain Anda ke daftar <strong>Domain Tersedia</strong> di bagian atas halaman ini, lalu klik <strong>Simpan</strong>. Email masuk akan langsung tersimpan ke inbox secara real-time.
                     </p>
                   </div>
 
@@ -1021,11 +1019,12 @@ export default function AdminPage() {
 
                   <div className="flex items-start gap-2 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
                     <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                    <p className="text-xs text-muted-foreground">
-                      <strong>Endpoint webhook:</strong> <code className="bg-muted px-1 rounded">POST /api/webhook/inbound-email</code> — 
-                      menerima JSON <code className="bg-muted px-1 rounded">{`{to, from, subject, textBody, htmlBody}`}</code> dengan header <code className="bg-muted px-1 rounded">X-Webhook-Secret</code>. 
-                      Email otomatis masuk ke inbox dan memicu webhook notifikasi jika ada.
-                    </p>
+                    <div className="text-xs text-muted-foreground space-y-1 min-w-0">
+                      <p><strong>Endpoint webhook:</strong></p>
+                      <code className="block bg-muted px-1.5 py-0.5 rounded break-all">POST /api/webhook/inbound-email</code>
+                      <p>Header: <code className="bg-muted px-1 rounded break-all">X-Webhook-Secret</code></p>
+                      <p>Body JSON: <code className="bg-muted px-1 rounded break-all">{"to, from, subject, textBody, htmlBody"}</code></p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
