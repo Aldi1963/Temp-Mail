@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Link } from "wouter";
-import { Inbox, Mail } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Inbox, Mail, LogIn } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import { Header } from "@/components/header";
 import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
@@ -32,6 +33,8 @@ export default function Home() {
   const [inboxList, setInboxList] = useLocalStorage<InboxEntry[]>("tempmail_inbox_list", []);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<"inbox" | "email">("inbox");
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
 
   const { playChime } = useSound();
   const { toast } = useToast();
@@ -233,13 +236,13 @@ export default function Home() {
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90 safe-area-pb">
+        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
           <div className="flex h-16">
+
+            {/* Tab: Inbox */}
             <button
               className={`flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors relative ${
-                mobileTab === "inbox"
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                mobileTab === "inbox" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setMobileTab("inbox")}
             >
@@ -257,11 +260,10 @@ export default function Home() {
               <span>Inbox</span>
             </button>
 
+            {/* Tab: Alamat */}
             <button
               className={`flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors relative ${
-                mobileTab === "email"
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                mobileTab === "email" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setMobileTab("email")}
             >
@@ -271,6 +273,30 @@ export default function Home() {
               <Mail className="h-5 w-5" />
               <span>Alamat</span>
             </button>
+
+            {/* Tab: Akun / Masuk */}
+            {user ? (
+              <button
+                className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors relative"
+                onClick={() => navigate("/dashboard")}
+              >
+                <div className="h-5 w-5 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary text-[10px] font-bold">
+                  {user.email.substring(0, 1).toUpperCase()}
+                </div>
+                <span className="truncate max-w-[56px]">{user.email.split("@")[0].slice(0, 8)}</span>
+              </button>
+            ) : (
+              <button
+                className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary transition-colors relative"
+                onClick={() => navigate("/login")}
+              >
+                <div className="h-5 w-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <LogIn className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <span>Masuk</span>
+              </button>
+            )}
+
           </div>
         </nav>
       </div>
