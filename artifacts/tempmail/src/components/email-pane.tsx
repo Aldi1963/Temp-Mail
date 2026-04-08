@@ -280,117 +280,91 @@ export function EmailPane({
       )}
 
       {/* ── Hero Email Card ── */}
-      <div className="relative rounded-2xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background shadow-sm">
-        {/* Decorative glow */}
-        <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+      <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
 
-        <div className="relative p-5 space-y-4">
-          {/* Label */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
-                Inbox Aktif
-              </span>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setQrOpen(true)}
-              disabled={!activeEmail}
-              className="h-7 w-7 hover:bg-primary/10 hover:text-primary"
-              title="QR Code"
-            >
-              <QrCode className="h-3.5 w-3.5" />
-            </Button>
+        {/* Top bar: status + QR */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-1">
+          <div className="flex items-center gap-1.5">
+            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Inbox Aktif</span>
           </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setQrOpen(true)}
+            disabled={!activeEmail}
+            className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+            title="QR Code"
+          >
+            <QrCode className="h-3 w-3" />
+          </Button>
+        </div>
 
-          {/* Email address — hero display */}
-          <div className="space-y-2">
+        {/* Inline row: label | email | generate */}
+        <div className="px-3 pb-3 space-y-2">
+          <div className="flex items-center rounded-xl border border-border/60 bg-background overflow-hidden h-11">
+            {/* Label badge */}
+            <div className="flex items-center gap-1.5 px-3 h-full bg-muted/60 border-r border-border/60 shrink-0">
+              <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Email</span>
+            </div>
+
+            {/* Email display — truncated, click to copy */}
             {activeEmail ? (
-              <div
-                className="font-mono font-bold text-lg sm:text-xl leading-tight break-all text-foreground cursor-pointer select-all"
-                data-testid="text-active-email"
+              <button
+                className="flex-1 min-w-0 px-3 h-full text-left hover:bg-muted/30 transition-colors group"
                 onClick={copyToClipboard}
+                data-testid="text-active-email"
                 title="Klik untuk menyalin"
               >
-                <span className="text-primary">{activeEmail.split("@")[0]}</span>
-                <span className="text-muted-foreground/70 text-base">@{activeEmail.split("@")[1]}</span>
-              </div>
-            ) : (
-              <Skeleton className="h-8 w-full" />
-            )}
-          </div>
-
-          {/* Copy button — prominent */}
-          <Button
-            onClick={copyToClipboard}
-            disabled={!activeEmail}
-            variant={copied ? "default" : "outline"}
-            className={`w-full h-9 gap-2 text-sm font-medium transition-all ${copied ? "bg-green-500 hover:bg-green-500 border-green-500 text-white" : "border-primary/30 hover:bg-primary/10 hover:text-primary hover:border-primary"}`}
-            data-testid="button-copy-email"
-          >
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            {copied ? "Tersalin!" : "Salin Alamat Email"}
-          </Button>
-
-          {/* Custom username */}
-          {editingUsername ? (
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center border border-primary/40 rounded-lg overflow-hidden bg-background focus-within:ring-1 focus-within:ring-primary">
-                <Input
-                  autoFocus
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value.toLowerCase())}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCustomUsername();
-                    if (e.key === "Escape") setEditingUsername(false);
-                  }}
-                  placeholder="username-kustom"
-                  className="border-0 focus-visible:ring-0 h-8 text-sm font-mono"
-                />
-                <span className="text-[11px] text-muted-foreground pr-2 whitespace-nowrap">
-                  @{selectedDomain || (domains[0] ?? "domain")}
+                <span className="block text-sm font-mono font-medium truncate">
+                  <span className="text-primary">{activeEmail.split("@")[0]}</span>
+                  <span className="text-muted-foreground text-xs">@{activeEmail.split("@")[1]}</span>
                 </span>
+              </button>
+            ) : (
+              <div className="flex-1 px-3">
+                <Skeleton className="h-4 w-36" />
               </div>
-              <Button size="icon" className="h-8 w-8 shrink-0" onClick={handleCustomUsername}>
-                <Check className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => { setEditingUsername(false); setUsernameInput(""); }}>
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setEditingUsername(true)}
-              className="w-full flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors py-0.5"
-            >
-              <Pencil className="h-3 w-3" />
-              Buat username kustom
-            </button>
-          )}
+            )}
 
-          {/* Generate + Domain */}
-          <div className="flex gap-2">
-            <Button
+            {/* Copy icon */}
+            <button
+              onClick={copyToClipboard}
+              disabled={!activeEmail}
+              className="px-2 h-full flex items-center text-muted-foreground hover:text-primary transition-colors shrink-0"
+              title="Salin"
+              data-testid="button-copy-email"
+            >
+              {copied
+                ? <Check className="h-3.5 w-3.5 text-green-500" />
+                : <Copy className="h-3.5 w-3.5" />
+              }
+            </button>
+
+            {/* Generate button — in-row, right side */}
+            <button
               onClick={() => handleGenerate()}
               disabled={isGenerating}
-              className="flex-1 h-9 gap-2 bg-primary hover:bg-primary/90 text-sm"
+              className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0 disabled:opacity-60"
               data-testid="button-generate-email"
             >
-              <Zap className={`h-4 w-4 ${isGenerating ? "animate-spin" : ""}`} />
+              <Zap className={`h-3.5 w-3.5 ${isGenerating ? "animate-spin" : ""}`} />
               Generate Baru
-            </Button>
+            </button>
+          </div>
 
+          {/* Domain selector + custom username — compact row */}
+          <div className="flex items-center gap-2">
+            {/* Domain dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-9 px-3 text-xs gap-1 shrink-0" disabled={domains.length === 0}>
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-[11px] gap-1 shrink-0 border-dashed" disabled={domains.length === 0}>
                   @{selectedDomain || (domains.length > 0 ? domains[0] : "domain")}
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[180px]">
+              <DropdownMenuContent align="start" className="w-[180px]">
                 {domains.map((domain) => (
                   <DropdownMenuItem
                     key={domain}
@@ -403,6 +377,39 @@ export function EmailPane({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Custom username */}
+            {editingUsername ? (
+              <div className="flex-1 flex items-center gap-1">
+                <div className="flex-1 flex items-center border border-primary/40 rounded-lg overflow-hidden bg-background h-7 focus-within:ring-1 focus-within:ring-primary">
+                  <Input
+                    autoFocus
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value.toLowerCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCustomUsername();
+                      if (e.key === "Escape") setEditingUsername(false);
+                    }}
+                    placeholder="username-kustom"
+                    className="border-0 focus-visible:ring-0 h-7 text-xs font-mono px-2"
+                  />
+                </div>
+                <Button size="icon" className="h-7 w-7 shrink-0" onClick={handleCustomUsername}>
+                  <Check className="h-3 w-3" />
+                </Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => { setEditingUsername(false); setUsernameInput(""); }}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingUsername(true)}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Pencil className="h-3 w-3" />
+                Username kustom
+              </button>
+            )}
           </div>
         </div>
       </div>
