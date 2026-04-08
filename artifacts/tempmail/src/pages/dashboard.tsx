@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Mail, Inbox, Clock, MailOpen, RefreshCw, User, ShieldCheck,
-  Code2, UserCircle, LayoutDashboard, LogOut, Menu, X, Home
+  Code2, UserCircle, LayoutDashboard, LogOut, Menu, X, Home,
+  LogIn, KeyRound, ShieldPlus, ShieldOff, UserPlus, Activity
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 
 interface UserEmail {
   email: string;
@@ -26,6 +28,14 @@ interface UserStats {
   activeEmails: number;
 }
 
+interface ActivityLogItem {
+  id: number;
+  action: string;
+  description: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 type Section = "overview";
 
 const navItems = [
@@ -37,12 +47,24 @@ const navLinks = [
   { href: "/developer", icon: Code2, label: "Developer Tools" },
 ];
 
+const ACTION_META: Record<string, { icon: React.ElementType; color: string; label: string }> = {
+  login: { icon: LogIn, color: "text-blue-500", label: "Login" },
+  login_2fa: { icon: ShieldCheck, color: "text-blue-500", label: "Login (2FA)" },
+  register: { icon: UserPlus, color: "text-green-500", label: "Daftar Akun" },
+  password_changed: { icon: KeyRound, color: "text-orange-500", label: "Ganti Password" },
+  "2fa_enabled": { icon: ShieldPlus, color: "text-green-500", label: "2FA Diaktifkan" },
+  "2fa_disabled": { icon: ShieldOff, color: "text-red-500", label: "2FA Dinonaktifkan" },
+  email_received: { icon: Mail, color: "text-primary", label: "Email Masuk" },
+};
+
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [emails, setEmails] = useState<UserEmail[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [activities, setActivities] = useState<ActivityLogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -65,7 +87,23 @@ export default function DashboardPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const fetchActivity = async () => {
+    setActivityLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/user/activity?limit=15`, { credentials: "include" });
+      const data = await res.json();
+      setActivities(data.activities ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    fetchActivity();
+  }, []);
 
   const initials = user?.email ? user.email.substring(0, 2).toUpperCase() : "U";
 
@@ -265,6 +303,60 @@ export default function DashboardPage() {
               </div>
             </Link>
           </div>
+
+          {/* Activity Log */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Log Aktivitas
+              </CardTitle>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={fetchActivity}>
+                <RefreshCw className={`h-3.5 w-3.5 ${activityLoading ? "animate-spin" : ""}`} />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {activityLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+                </div>
+              ) : activities.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Belum ada aktivitas yang tercatat.</p>
+                  <p className="text-xs mt-1 opacity-70">Aktivitas akan muncul setelah login, ganti password, dll.</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {activities.map((act) => {
+                    const meta = ACTION_META[act.action] ?? { icon: Activity, color: "text-muted-foreground", label: act.action };
+                    const Icon = meta.icon;
+                    return (
+                      <div key={act.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted/30 transition-colors">
+                        <div className={`mt-0.5 shrink-0 ${meta.color}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-foreground truncate">{act.description}</span>
+                            <span
+                              className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0"
+                              title={format(new Date(act.createdAt), "d MMM yyyy, HH:mm:ss")}
+                            >
+                              {formatDistanceToNow(new Date(act.createdAt), { addSuffix: true, locale: idLocale })}
+                            </span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 mt-0.5 font-normal">
+                            {meta.label}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Email History */}
           <Card className="border-border/50">

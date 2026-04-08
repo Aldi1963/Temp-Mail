@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, userTwoFactorTable } from "@workspace/db";
+import { usersTable, userTwoFactorTable, activityLogsTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import rateLimit from "express-rate-limit";
 import { requireAuth } from "../lib/auth.js";
 
 declare module "express-session" {
@@ -16,7 +17,48 @@ declare module "express-session" {
 
 const router = Router();
 
-router.post("/register", async (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too Many Requests",
+    message: "Terlalu banyak percobaan login. Coba lagi dalam 15 menit.",
+  },
+  skipSuccessfulRequests: true,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too Many Requests",
+    message: "Terlalu banyak percobaan pendaftaran. Coba lagi dalam 1 jam.",
+  },
+});
+
+async function logActivity(
+  userId: number,
+  action: string,
+  description: string,
+  metadata: Record<string, unknown> = {}
+) {
+  try {
+    await db.insert(activityLogsTable).values({
+      userId,
+      action,
+      description,
+      metadata: JSON.stringify(metadata),
+    });
+  } catch {
+    /* non-fatal */
+  }
+}
+
+router.post("/register", registerLimiter, async (req, res) => {
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
@@ -55,10 +97,12 @@ router.post("/register", async (req, res) => {
   req.session.userId = user.id;
   req.session.userRole = user.role;
 
+  await logActivity(user.id, "register", "Akun baru berhasil dibuat");
+
   res.json({ id: user.id, email: user.email, role: user.role, createdAt: user.createdAt });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
@@ -97,6 +141,8 @@ router.post("/login", async (req, res) => {
 
   req.session.userId = user.id;
   req.session.userRole = user.role;
+
+  await logActivity(user.id, "login", "Login berhasil");
 
   res.json({ id: user.id, email: user.email, role: user.role, createdAt: user.createdAt });
 });
@@ -186,6 +232,8 @@ router.post("/2fa/verify-login", async (req, res) => {
     .limit(1);
   const user = users[0];
 
+  await logActivity(pending.userId, "login_2fa", "Login berhasil dengan verifikasi 2FA");
+
   res.json({ id: user.id, email: user.email, role: user.role, createdAt: user.createdAt });
 });
 
@@ -274,6 +322,8 @@ router.post("/2fa/enable", requireAuth, async (req, res) => {
     .set({ enabled: true, backupCodes: JSON.stringify(backupCodes) })
     .where(eq(userTwoFactorTable.userId, userId));
 
+  await logActivity(userId, "2fa_enabled", "Autentikasi dua faktor (2FA) diaktifkan");
+
   res.json({ success: true, backupCodes });
 });
 
@@ -313,6 +363,8 @@ router.post("/2fa/disable", requireAuth, async (req, res) => {
     .set({ enabled: false })
     .where(eq(userTwoFactorTable.userId, userId));
 
+  await logActivity(userId, "2fa_disabled", "Autentikasi dua faktor (2FA) dinonaktifkan");
+
   res.json({ success: true });
 });
 
@@ -345,6 +397,8 @@ router.post("/change-password", requireAuth, async (req, res) => {
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, userId));
+
+  await logActivity(userId, "password_changed", "Password akun berhasil diubah");
 
   res.json({ success: true, message: "Password berhasil diubah." });
 });

@@ -5,6 +5,7 @@ import {
   emailAddressesTable,
   messagesTable,
   siteSettingsTable,
+  activityLogsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
@@ -115,6 +116,19 @@ router.post("/inbound-email", async (req, res) => {
     preview,
     receivedAt: now.toISOString(),
   });
+
+  if (addr.userId) {
+    try {
+      await db.insert(activityLogsTable).values({
+        userId: addr.userId,
+        action: "email_received",
+        description: `Email baru dari ${fromEmail}`,
+        metadata: JSON.stringify({ from: fromEmail, subject: subjectStr, to: toEmail }),
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
 
   res.json({ success: true, messageId, to: toEmail });
 });

@@ -79,6 +79,17 @@ export const userTwoFactorTable = pgTable("user_two_factor", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const activityLogsTable = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  description: text("description").notNull(),
+  metadata: text("metadata").notNull().default("{}"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type ActivityLog = typeof activityLogsTable.$inferSelect;
+
 export const insertEmailAddressSchema = createInsertSchema(emailAddressesTable);
 export const insertMessageSchema = createInsertSchema(messagesTable);
 export const insertUserSchema = createInsertSchema(usersTable);

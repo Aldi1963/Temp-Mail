@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { emailAddressesTable, messagesTable } from "@workspace/db";
+import { emailAddressesTable, messagesTable, activityLogsTable } from "@workspace/db";
 import { eq, desc, count } from "drizzle-orm";
-import { requireAuthOrApiKey } from "../lib/auth.js";
+import { requireAuth, requireAuthOrApiKey } from "../lib/auth.js";
 
 const router = Router();
 
@@ -47,6 +47,28 @@ router.get("/stats", async (req, res) => {
     totalEmails: emails.length,
     totalMessages,
     activeEmails: emails.filter((e) => e.expiresAt > new Date()).length,
+  });
+});
+
+router.get("/activity", requireAuth, async (req, res) => {
+  const userId = req.session.userId!;
+  const limit = Math.min(Number(req.query.limit) || 20, 50);
+
+  const logs = await db
+    .select()
+    .from(activityLogsTable)
+    .where(eq(activityLogsTable.userId, userId))
+    .orderBy(desc(activityLogsTable.createdAt))
+    .limit(limit);
+
+  res.json({
+    activities: logs.map((l) => ({
+      id: l.id,
+      action: l.action,
+      description: l.description,
+      metadata: JSON.parse(l.metadata),
+      createdAt: l.createdAt,
+    })),
   });
 });
 
