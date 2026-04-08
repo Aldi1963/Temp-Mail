@@ -5,6 +5,7 @@ import { authRouter } from "./auth";
 import { adminRouter } from "./admin";
 import { userRouter } from "./user";
 import { developerRouter } from "./developer";
+import { webhookRouter } from "./webhook";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use("/auth", authRouter);
 router.use("/admin", adminRouter);
 router.use("/user", userRouter);
 router.use("/developer", developerRouter);
+router.use("/webhook", webhookRouter);
 
 export default router;

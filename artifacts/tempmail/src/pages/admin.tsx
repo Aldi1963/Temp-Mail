@@ -5,7 +5,7 @@ import {
   Trash2, ShieldCheck, ShieldX, RefreshCw, Save, PlusCircle, X,
   BarChart2, ToggleLeft, ToggleRight, LayoutDashboard, LogOut,
   Menu, Megaphone, Palette, Zap, Tag, Info, AlertTriangle, CheckCircle,
-  Home, ChevronRight, Image, FileText, Search
+  Home, ChevronRight, Image, FileText, Search, Copy, Key, ExternalLink
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +102,9 @@ export default function AdminPage() {
     status: "ok" | "partial" | "error"; summary: string;
   } | null>(null);
   const [guideType, setGuideType] = useState<"subdomain" | "root">("subdomain");
+  const [inboundSecret, setInboundSecret] = useState<string | null>(null);
+  const [secretLoading, setSecretLoading] = useState(false);
+  const [secretVisible, setSecretVisible] = useState(false);
 
   useEffect(() => {
     if (!user) { navigate("/login"); return; }
@@ -154,6 +157,22 @@ export default function AdminPage() {
   };
   const removeDomain = (d: string) => {
     set("available_domains", JSON.stringify(getDomains().filter((x) => x !== d)));
+  };
+
+  const loadInboundSecret = async () => {
+    if (inboundSecret) { setSecretVisible(true); return; }
+    setSecretLoading(true);
+    try {
+      const data = await adminApi("/api/webhook/inbound-secret");
+      setInboundSecret(data.secret);
+      setSecretVisible(true);
+    } catch (err: unknown) {
+      toast({ title: "Gagal memuat secret", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally { setSecretLoading(false); }
+  };
+
+  const copyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => toast({ title: `${label} disalin!` }));
   };
 
   const checkDns = async () => {
@@ -839,6 +858,174 @@ export default function AdminPage() {
                       </div>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+
+              {/* Cloudflare Email Workers Setup */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Key className="h-4 w-4 text-orange-500" />
+                    Terima Email Real-Time via Cloudflare
+                  </CardTitle>
+                  <CardDescription>
+                    Hubungkan domain Anda dengan Cloudflare Email Workers agar email benar-benar masuk ke inbox secara real-time.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+
+                  {/* Alur */}
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                    <span className="bg-muted px-2 py-1 rounded font-medium">Pengirim</span>
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                    <span className="bg-orange-500/10 text-orange-600 dark:text-orange-400 px-2 py-1 rounded font-medium">MX → Cloudflare</span>
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                    <span className="bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-1 rounded font-medium">Email Worker</span>
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                    <span className="bg-primary/10 text-primary px-2 py-1 rounded font-medium">TempMail API</span>
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                    <span className="bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-1 rounded font-medium">Inbox</span>
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 1 — Webhook Secret */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">1</span>
+                      Webhook Secret
+                    </p>
+                    <p className="text-xs text-muted-foreground pl-7">
+                      Ini adalah kunci rahasia antara Worker dan TempMail. Salin dan simpan — akan dimasukkan ke Environment Variables Worker.
+                    </p>
+                    <div className="pl-7">
+                      {!secretVisible ? (
+                        <Button size="sm" variant="outline" onClick={loadInboundSecret} disabled={secretLoading} className="gap-2">
+                          <Key className="h-3.5 w-3.5" />
+                          {secretLoading ? "Memuat..." : "Tampilkan Webhook Secret"}
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 bg-muted px-3 py-2 rounded-lg text-xs font-mono break-all border border-border">
+                            {inboundSecret}
+                          </code>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                            onClick={() => copyText(inboundSecret!, "Secret")}>
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Step 2 — MX Record */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">2</span>
+                      Tambahkan MX Record di Cloudflare
+                    </p>
+                    <p className="text-xs text-muted-foreground pl-7">
+                      Buka Cloudflare DNS untuk domain Anda, tambahkan record berikut agar email masuk ke Cloudflare:
+                    </p>
+                    <div className="pl-7">
+                      <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-1">
+                        <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground font-sans mb-1">
+                          <span>TYPE</span><span>NAME</span><span>VALUE</span><span>PRIORITY</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2">
+                          <span className="text-blue-500 font-bold">MX</span>
+                          <span>@</span>
+                          <span>route1.mx.cloudflare.net</span>
+                          <span>10</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2">
+                          <span className="text-blue-500 font-bold">MX</span>
+                          <span>@</span>
+                          <span>route2.mx.cloudflare.net</span>
+                          <span>20</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2">
+                          <span className="text-blue-500 font-bold">MX</span>
+                          <span>@</span>
+                          <span>route3.mx.cloudflare.net</span>
+                          <span>30</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3 — Aktifkan Email Routing */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">3</span>
+                      Aktifkan Email Routing di Cloudflare
+                    </p>
+                    <p className="text-xs text-muted-foreground pl-7">
+                      Buka Cloudflare Dashboard → pilih domain → menu <strong>Email</strong> → <strong>Email Routing</strong> → klik <strong>Enable Email Routing</strong>.
+                    </p>
+                  </div>
+
+                  {/* Step 4 — Deploy Worker */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">4</span>
+                      Deploy Cloudflare Email Worker
+                    </p>
+                    <div className="pl-7 space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Buka <strong>Workers & Pages</strong> → <strong>Create Worker</strong> → tempel kode dari file <code className="bg-muted px-1 rounded">cloudflare-worker/email-worker.js</code> di project ini.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Lalu di <strong>Settings → Variables</strong> tambahkan:
+                      </p>
+                      <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-1">
+                        <div className="flex gap-4">
+                          <span className="text-purple-500 w-44 shrink-0">TEMPMAIL_WEBHOOK_URL</span>
+                          <span className="text-muted-foreground">https://yourapp.replit.app/api/webhook/inbound-email</span>
+                        </div>
+                        <div className="flex gap-4">
+                          <span className="text-purple-500 w-44 shrink-0">TEMPMAIL_WEBHOOK_SECRET</span>
+                          <span className="text-muted-foreground">(salin dari Langkah 1)</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Tambahkan juga dependensi <code className="bg-muted px-1 rounded">postal-mime</code> via npm di dalam Worker.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 5 — Hubungkan Worker ke Email Routing */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">5</span>
+                      Hubungkan Worker ke Email Routing
+                    </p>
+                    <p className="text-xs text-muted-foreground pl-7">
+                      Kembali ke <strong>Email Routing</strong> → tab <strong>Routing Rules</strong> → <strong>Catch-all address</strong> → ubah action menjadi <strong>Send to a Worker</strong> → pilih worker yang baru dibuat.
+                    </p>
+                  </div>
+
+                  {/* Step 6 — Tambah domain */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">6</span>
+                      Tambahkan Domain ke Daftar TempMail
+                    </p>
+                    <p className="text-xs text-muted-foreground pl-7">
+                      Setelah semua selesai, tambahkan domain Anda (misal <code className="bg-muted px-1 rounded">namadomain.com</code>) ke daftar Domain Tersedia di bagian atas halaman ini, lalu klik Simpan. Email dengan alamat <code className="bg-muted px-1 rounded">user@namadomain.com</code> akan langsung masuk ke inbox secara real-time.
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-start gap-2 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                    <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-muted-foreground">
+                      <strong>Endpoint webhook:</strong> <code className="bg-muted px-1 rounded">POST /api/webhook/inbound-email</code> — 
+                      menerima JSON <code className="bg-muted px-1 rounded">{`{to, from, subject, textBody, htmlBody}`}</code> dengan header <code className="bg-muted px-1 rounded">X-Webhook-Secret</code>. 
+                      Email otomatis masuk ke inbox dan memicu webhook notifikasi jika ada.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </>
