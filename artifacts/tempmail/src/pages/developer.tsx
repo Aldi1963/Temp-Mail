@@ -7,8 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import {
-  Key, Webhook, Plus, Trash2, Copy, CheckCircle2, XCircle, ToggleLeft, ToggleRight,
-  PlayCircle, Eye, EyeOff, ChevronLeft, RefreshCw, Code2, RotateCcw, AlertTriangle
+  Key, Webhook, Trash2, Copy, CheckCircle2, ToggleLeft, ToggleRight,
+  PlayCircle, Eye, EyeOff, ChevronLeft, RefreshCw, Code2, RotateCcw, AlertTriangle, Zap, Plus
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -74,68 +74,6 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
-function NewKeyModal({ onCreated, rowTrigger }: { onCreated: (key: string) => void; rowTrigger?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
-
-  const create = async () => {
-    if (!name.trim()) return;
-    setLoading(true);
-    const r = await api("/developer/keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const data = await r.json();
-    setLoading(false);
-    if (!r.ok) { toast({ title: "Gagal", description: data.message, variant: "destructive" }); return; }
-    setOpen(false);
-    setName("");
-    onCreated(data.key);
-  };
-
-  if (!open) return rowTrigger ? (
-    <button
-      onClick={() => setOpen(true)}
-      className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0"
-    >
-      <Plus className="h-3.5 w-3.5" /> Buat API Key
-    </button>
-  ) : (
-    <Button size="sm" onClick={() => setOpen(true)} className="gap-1.5">
-      <Plus className="h-4 w-4" /> Buat API Key
-    </Button>
-  );
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
-      <div className="bg-background rounded-xl shadow-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-semibold text-lg mb-4">Buat API Key Baru</h3>
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm font-medium">Nama Key</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Contoh: Proyek Website Saya"
-              className="mt-1"
-              autoFocus
-              onKeyDown={(e) => e.key === "Enter" && create()}
-            />
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
-            <Button onClick={create} disabled={loading || !name.trim()}>
-              {loading ? "Membuat..." : "Buat Key"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function RevealKeyModal({ rawKey, onClose }: { rawKey: string; onClose: () => void }) {
   const [show, setShow] = useState(false);
@@ -280,6 +218,21 @@ export default function DeveloperPage() {
   const [testLoading, setTestLoading] = useState<number | null>(null);
   const [confirmRegen, setConfirmRegen] = useState<{ type: "key" | "secret"; id: number } | null>(null);
   const [regenLoading, setRegenLoading] = useState(false);
+  const [genKeyLoading, setGenKeyLoading] = useState(false);
+
+  const generateKey = async () => {
+    setGenKeyLoading(true);
+    const r = await api("/developer/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "API Key" }),
+    });
+    const data = await r.json();
+    setGenKeyLoading(false);
+    if (!r.ok) { toast({ title: "Gagal", description: data.message, variant: "destructive" }); return; }
+    await load();
+    setRevealKey(data.key);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -429,14 +382,26 @@ export default function DeveloperPage() {
               <div className="flex-1 h-3 bg-muted animate-pulse rounded" />
             </div>
           ) : keys.length === 0 ? (
-            /* Empty state — same row style with "Buat" button */
-            <div className="flex items-center rounded-xl border border-dashed border-border bg-card overflow-hidden h-11">
-              <div className="flex items-center gap-1.5 px-3 h-full bg-muted/40 border-r border-border shrink-0">
+            /* Empty state — same inline row style, direct generate */
+            <div className="flex items-center rounded-xl border border-border/60 bg-card overflow-hidden h-11">
+              <div className="flex items-center gap-1.5 px-3 h-full bg-muted/50 border-r border-border/60 shrink-0">
                 <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground">API Key</span>
+                <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">API Key</span>
               </div>
-              <span className="flex-1 px-3 text-xs text-muted-foreground italic">Belum ada API key</span>
-              <NewKeyModal onCreated={(k) => setRevealKey(k)} rowTrigger />
+              <div className="flex-1 min-w-0 px-3">
+                <span className="text-sm font-mono text-muted-foreground/50 tracking-widest">••••••••••••</span>
+              </div>
+              <button
+                onClick={generateKey}
+                disabled={genKeyLoading}
+                className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0 disabled:opacity-60"
+              >
+                {genKeyLoading
+                  ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  : <Zap className="h-3.5 w-3.5" />
+                }
+                Generate Baru
+              </button>
             </div>
           ) : (
             keys.map((k) => (
