@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable } from "@workspace/db";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, gte, gt, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
 import { promisify } from "util";
@@ -25,6 +25,53 @@ router.get("/stats", async (_req, res) => {
     totalUsers: Number(userCount.count),
     totalEmails: Number(emailCount.count),
     totalMessages: Number(messageCount.count),
+  });
+});
+
+// --- Detailed Stats ---
+router.get("/stats/detail", async (_req, res) => {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const sevenDaysAgo = new Date(todayStart);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+  const [[activeCount], [emailsToday], [newUsers], [messagesT], emailsPerDayRaw, messagesPerDayRaw] = await Promise.all([
+    db.select({ count: count() }).from(emailAddressesTable).where(gt(emailAddressesTable.expiresAt, now)),
+    db.select({ count: count() }).from(emailAddressesTable).where(gte(emailAddressesTable.createdAt, todayStart)),
+    db.select({ count: count() }).from(usersTable).where(gte(usersTable.createdAt, sevenDaysAgo)),
+    db.select({ count: count() }).from(messagesTable).where(gte(messagesTable.receivedAt, todayStart)),
+    db.execute(sql`SELECT DATE(created_at) as date, COUNT(*)::int as count FROM email_addresses WHERE created_at >= ${sevenDaysAgo} GROUP BY DATE(created_at) ORDER BY date ASC`),
+    db.execute(sql`SELECT DATE(received_at) as date, COUNT(*)::int as count FROM messages WHERE received_at >= ${sevenDaysAgo} GROUP BY DATE(received_at) ORDER BY date ASC`),
+  ]);
+
+  const emailsByDay: Record<string, number> = {};
+  const messagesByDay: Record<string, number> = {};
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(sevenDaysAgo);
+    d.setDate(d.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    emailsByDay[key] = 0;
+    messagesByDay[key] = 0;
+  }
+  for (const r of emailsPerDayRaw.rows as { date: string; count: number }[]) {
+    const key = String(r.date).slice(0, 10);
+    if (key in emailsByDay) emailsByDay[key] = Number(r.count);
+  }
+  for (const r of messagesPerDayRaw.rows as { date: string; count: number }[]) {
+    const key = String(r.date).slice(0, 10);
+    if (key in messagesByDay) messagesByDay[key] = Number(r.count);
+  }
+
+  const emailsPerDay = Object.entries(emailsByDay).map(([date, count]) => ({ date, count }));
+  const messagesPerDay = Object.entries(messagesByDay).map(([date, count]) => ({ date, count }));
+
+  res.json({
+    activeEmails: Number(activeCount.count),
+    emailsToday: Number(emailsToday.count),
+    newUsersThisWeek: Number(newUsers.count),
+    messagesToday: Number(messagesT.count),
+    emailsPerDay,
+    messagesPerDay,
   });
 });
 

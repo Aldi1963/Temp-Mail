@@ -5,8 +5,12 @@ import {
   Trash2, ShieldCheck, ShieldX, RefreshCw, Save, PlusCircle, X,
   BarChart2, ToggleLeft, ToggleRight, LayoutDashboard, LogOut,
   Menu, Megaphone, Palette, Zap, Tag, Info, AlertTriangle, CheckCircle,
-  Home, ChevronRight, Image, FileText, Search, Copy, Key, ExternalLink
+  Home, ChevronRight, Image, FileText, Search, Copy, Key, ExternalLink,
+  KeyRound, TrendingUp, Activity, Clock
 } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +25,7 @@ import {
   AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -29,6 +34,14 @@ type Section = "overview" | "general" | "web" | "domains" | "users" | "stats";
 
 interface AdminStats { totalUsers: number; totalEmails: number; totalMessages: number; }
 interface AdminUser { id: number; email: string; role: string; createdAt: string; }
+interface DetailedStats {
+  activeEmails: number;
+  emailsToday: number;
+  newUsersThisWeek: number;
+  messagesToday: number;
+  emailsPerDay: { date: string; count: number }[];
+  messagesPerDay: { date: string; count: number }[];
+}
 interface SiteSettings {
   site_name: string; default_ttl_minutes: string; max_inboxes: string;
   available_domains: string; allow_registration: string; maintenance_mode: string;
@@ -89,6 +102,7 @@ export default function AdminPage() {
   const [active, setActive] = useState<Section>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [detailedStats, setDetailedStats] = useState<DetailedStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +111,10 @@ export default function AdminPage() {
   const [newDomain, setNewDomain] = useState("");
   const [dnsTarget, setDnsTarget] = useState("");
   const [dnsChecking, setDnsChecking] = useState(false);
+  // Reset password state
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<number | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [dnsResult, setDnsResult] = useState<{
     domain: string; a: string[]; cname: string[]; mx: { exchange: string; priority: number }[];
     status: "ok" | "partial" | "error"; summary: string;
@@ -114,15 +132,35 @@ export default function AdminPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [s, u, cfg] = await Promise.all([
+      const [s, u, cfg, ds] = await Promise.all([
         adminApi("/api/admin/stats"),
         adminApi("/api/admin/users"),
         adminApi("/api/admin/settings"),
+        adminApi("/api/admin/stats/detail"),
       ]);
-      setStats(s); setUsers(u); setSettings(cfg); setEditSettings(cfg);
+      setStats(s); setUsers(u); setSettings(cfg); setEditSettings(cfg); setDetailedStats(ds);
     } catch (err: unknown) {
       toast({ title: "Gagal memuat data", description: err instanceof Error ? err.message : "", variant: "destructive" });
     } finally { setLoading(false); }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPasswordUserId || !resetPasswordValue || resetPasswordValue.length < 6) {
+      toast({ title: "Password minimal 6 karakter", variant: "destructive" });
+      return;
+    }
+    setResetPasswordLoading(true);
+    try {
+      await adminApi(`/api/admin/users/${resetPasswordUserId}/password`, {
+        method: "PATCH",
+        body: JSON.stringify({ password: resetPasswordValue }),
+      });
+      toast({ title: "Password berhasil direset" });
+      setResetPasswordUserId(null);
+      setResetPasswordValue("");
+    } catch (err: unknown) {
+      toast({ title: "Gagal reset password", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally { setResetPasswordLoading(false); }
   };
 
   const saveSettings = async (partial?: Partial<SiteSettings>) => {
@@ -970,6 +1008,13 @@ export default function AdminPage() {
                                   ? <><ShieldX className="h-3 w-3" /><span className="hidden sm:inline">Turunkan</span></>
                                   : <><ShieldCheck className="h-3 w-3" /><span className="hidden sm:inline">Admin</span></>}
                               </Button>
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                title="Reset password"
+                                onClick={() => { setResetPasswordUserId(u.id); setResetPasswordValue(""); }}
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                              </Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive">
@@ -1007,45 +1052,134 @@ export default function AdminPage() {
             <>
               <div>
                 <h1 className="text-xl font-bold">Statistik</h1>
-                <p className="text-sm text-muted-foreground mt-1">Ringkasan data penggunaan sistem secara keseluruhan.</p>
+                <p className="text-sm text-muted-foreground mt-1">Data penggunaan sistem secara keseluruhan.</p>
               </div>
 
-              {/* Stat Cards Utama */}
-              <div className="grid sm:grid-cols-3 gap-3">
+              {/* Stat Cards — 3 total + 3 hari ini */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
-                  { label: "Pengguna Terdaftar", value: stats?.totalUsers ?? 0, icon: Users, color: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300" },
-                  { label: "Email Dibuat", value: stats?.totalEmails ?? 0, icon: Mail, color: "bg-primary/10 text-primary" },
-                  { label: "Pesan Diterima", value: stats?.totalMessages ?? 0, icon: Inbox, color: "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300" },
+                  { label: "Total Pengguna", value: stats?.totalUsers ?? 0, icon: Users, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/40" },
+                  { label: "Total Email Dibuat", value: stats?.totalEmails ?? 0, icon: Mail, color: "text-primary", bg: "bg-primary/10" },
+                  { label: "Total Pesan Masuk", value: stats?.totalMessages ?? 0, icon: Inbox, color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-950/40" },
                 ].map((s) => (
-                  <Card key={s.label} className={`border-0 ${s.color}`}>
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <s.icon className="h-10 w-10 opacity-70 shrink-0" />
-                      <div>
-                        {loading ? <Skeleton className="h-9 w-20 mb-1" /> : <div className="text-3xl font-bold">{s.value.toLocaleString("id-ID")}</div>}
-                        <div className="text-xs font-medium opacity-70">{s.label}</div>
+                  <Card key={s.label} className="border-border/50">
+                    <CardContent className="p-4">
+                      <div className={`${s.bg} w-8 h-8 rounded-lg flex items-center justify-center mb-3`}>
+                        <s.icon className={`h-4 w-4 ${s.color}`} />
                       </div>
+                      {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
+                        <div className={`text-2xl font-bold ${s.color}`}>{s.value.toLocaleString("id-ID")}</div>
+                      )}
+                      <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
 
-              {/* Metrik Turunan */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Stat Hari Ini */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Email Aktif Sekarang", value: detailedStats?.activeEmails ?? 0, icon: Activity, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-50 dark:bg-cyan-950/40" },
+                  { label: "Email Dibuat Hari Ini", value: detailedStats?.emailsToday ?? 0, icon: Mail, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/40" },
+                  { label: "Pesan Diterima Hari Ini", value: detailedStats?.messagesToday ?? 0, icon: Inbox, color: "text-primary", bg: "bg-primary/10" },
+                  { label: "User Baru (7 Hari)", value: detailedStats?.newUsersThisWeek ?? 0, icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+                ].map((s) => (
+                  <Card key={s.label} className="border-border/50">
+                    <CardContent className="p-3">
+                      <div className={`${s.bg} w-7 h-7 rounded-md flex items-center justify-center mb-2`}>
+                        <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
+                      </div>
+                      {loading ? <Skeleton className="h-7 w-12 mb-1" /> : (
+                        <div className={`text-xl font-bold ${s.color}`}>{s.value.toLocaleString("id-ID")}</div>
+                      )}
+                      <div className="text-[11px] text-muted-foreground leading-tight mt-0.5">{s.label}</div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Grafik Email per Hari */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart2 className="h-4 w-4" /> Email Dibuat per Hari (7 Hari Terakhir)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loading ? <Skeleton className="h-48 w-full" /> : (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={detailedStats?.emailsPerDay ?? []} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(d: string) => {
+                            const dt = new Date(d + "T00:00:00");
+                            return dt.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+                          }}
+                          className="text-muted-foreground"
+                        />
+                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip
+                          formatter={(v: number) => [v, "Email"]}
+                          labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+                          contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
+                        />
+                        <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Grafik Pesan per Hari */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Inbox className="h-4 w-4" /> Pesan Masuk per Hari (7 Hari Terakhir)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loading ? <Skeleton className="h-48 w-full" /> : (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={detailedStats?.messagesPerDay ?? []} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(d: string) => {
+                            const dt = new Date(d + "T00:00:00");
+                            return dt.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+                          }}
+                        />
+                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip
+                          formatter={(v: number) => [v, "Pesan"]}
+                          labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+                          contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
+                        />
+                        <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Metrik Turunan + Konfigurasi */}
+              <div className="grid sm:grid-cols-2 gap-3">
                 <Card className="bg-muted/30">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="bg-orange-100 dark:bg-orange-950/50 p-1.5 rounded-lg">
                         <BarChart2 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                       </div>
-                      <p className="text-xs text-muted-foreground font-medium">Pesan / Email</p>
+                      <p className="text-xs text-muted-foreground font-medium">Rata-rata Pesan / Email</p>
                     </div>
-                    {loading
-                      ? <Skeleton className="h-8 w-16" />
-                      : <p className="text-2xl font-bold">
-                          {stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0"}
-                        </p>
-                    }
-                    <p className="text-[11px] text-muted-foreground mt-0.5">rata-rata</p>
+                    {loading ? <Skeleton className="h-8 w-16" /> : (
+                      <p className="text-2xl font-bold">
+                        {stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0"}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
                 <Card className="bg-muted/30">
@@ -1054,15 +1188,13 @@ export default function AdminPage() {
                       <div className="bg-cyan-100 dark:bg-cyan-950/50 p-1.5 rounded-lg">
                         <Zap className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                       </div>
-                      <p className="text-xs text-muted-foreground font-medium">Email / User</p>
+                      <p className="text-xs text-muted-foreground font-medium">Rata-rata Email / User</p>
                     </div>
-                    {loading
-                      ? <Skeleton className="h-8 w-16" />
-                      : <p className="text-2xl font-bold">
-                          {stats?.totalUsers ? (stats.totalEmails / stats.totalUsers).toFixed(1) : "0"}
-                        </p>
-                    }
-                    <p className="text-[11px] text-muted-foreground mt-0.5">rata-rata</p>
+                    {loading ? <Skeleton className="h-8 w-16" /> : (
+                      <p className="text-2xl font-bold">
+                        {stats?.totalUsers ? (stats.totalEmails / stats.totalUsers).toFixed(1) : "0"}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -1075,25 +1207,16 @@ export default function AdminPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-0 divide-y divide-border/50">
-                  {/* Status row */}
                   <div className="flex items-center justify-between py-2.5 gap-3">
                     <span className="text-sm text-muted-foreground shrink-0">Status Sistem</span>
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                      settings?.maintenance_mode === "true"
-                        ? "bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300"
-                        : "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300"
-                    }`}>
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${settings?.maintenance_mode === "true" ? "bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300" : "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300"}`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${settings?.maintenance_mode === "true" ? "bg-yellow-500" : "bg-green-500"}`} />
                       {settings?.maintenance_mode === "true" ? "Pemeliharaan" : "Normal"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2.5 gap-3">
                     <span className="text-sm text-muted-foreground shrink-0">Registrasi</span>
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                      settings?.allow_registration === "true"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}>
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${settings?.allow_registration === "true" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${settings?.allow_registration === "true" ? "bg-primary" : "bg-muted-foreground"}`} />
                       {settings?.allow_registration === "true" ? "Dibuka" : "Ditutup"}
                     </span>
@@ -1113,14 +1236,9 @@ export default function AdminPage() {
                   <div className="flex items-start justify-between py-2.5 gap-3">
                     <span className="text-sm text-muted-foreground shrink-0 mt-0.5">Domain Aktif</span>
                     <div className="flex flex-wrap gap-1.5 justify-end max-w-[60%]">
-                      {loading
-                        ? <Skeleton className="h-6 w-24 rounded-full" />
-                        : getDomains().map(d => (
-                          <span key={d} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-[11px] font-mono font-medium px-2 py-0.5 rounded-full">
-                            @{d}
-                          </span>
-                        ))
-                      }
+                      {loading ? <Skeleton className="h-6 w-24 rounded-full" /> : getDomains().map(d => (
+                        <span key={d} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-[11px] font-mono font-medium px-2 py-0.5 rounded-full">@{d}</span>
+                      ))}
                     </div>
                   </div>
                 </CardContent>
@@ -1130,6 +1248,42 @@ export default function AdminPage() {
 
         </main>
       </div>
+
+      {/* ── Reset Password Dialog ── */}
+      {resetPasswordUserId !== null && (
+        <Dialog open={true} onOpenChange={() => { setResetPasswordUserId(null); setResetPasswordValue(""); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-primary" />
+                Reset Password Pengguna
+              </DialogTitle>
+              <DialogDescription>
+                Masukkan password baru untuk akun <strong>{users.find(u => u.id === resetPasswordUserId)?.email}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-1">
+              <div className="space-y-1.5">
+                <Label>Password Baru</Label>
+                <Input
+                  type="password"
+                  placeholder="Minimal 6 karakter"
+                  value={resetPasswordValue}
+                  onChange={(e) => setResetPasswordValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleResetPassword()}
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setResetPasswordUserId(null); setResetPasswordValue(""); }}>Batal</Button>
+              <Button onClick={handleResetPassword} disabled={resetPasswordLoading} className="gap-2">
+                <KeyRound className="h-4 w-4" />
+                {resetPasswordLoading ? "Menyimpan..." : "Reset Password"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

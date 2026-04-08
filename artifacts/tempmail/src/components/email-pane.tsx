@@ -261,8 +261,23 @@ export function EmailPane({
   const blockedList = blacklistData?.blocked ?? [];
   const isExpired = stats?.isExpired;
 
+  // Peringatan hampir kadaluarsa — sisa < 5 menit
+  const timeLeftMs = stats?.expiresAt ? new Date(stats.expiresAt).getTime() - Date.now() : Infinity;
+  const isNearExpiry = !isExpired && timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000;
+
   return (
     <div className="flex flex-col gap-3">
+
+      {/* ── Peringatan hampir kadaluarsa ── */}
+      {isNearExpiry && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-orange-300/60 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800/60 px-3.5 py-3">
+          <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">Email hampir kadaluarsa!</p>
+            <p className="text-[11px] text-orange-600/80 dark:text-orange-400/80 mt-0.5">Sisa waktu kurang dari 5 menit. Perpanjang sekarang agar inbox tidak hilang.</p>
+          </div>
+        </div>
+      )}
 
       {/* ── Hero Email Card ── */}
       <div className="relative rounded-2xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background shadow-sm">
