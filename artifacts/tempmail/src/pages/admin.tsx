@@ -704,27 +704,27 @@ export default function AdminPage() {
                               <p className="font-mono text-sm font-bold truncate">@{d}</p>
                               <p className="text-[11px] text-muted-foreground truncate">contoh@{d}</p>
                             </div>
-                            {/* Actions */}
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Actions — selalu tampil di mobile, hover di desktop */}
+                            <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <a
                                 href={`https://dash.cloudflare.com/?to=/:account/${d}/email/routing`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title="Buka Cloudflare Email Routing"
                               >
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/30">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/30">
                                   <ExternalLink className="h-3.5 w-3.5" />
                                 </Button>
                               </a>
                               <Button
-                                variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
                                 onClick={() => { setDnsTarget(d); }}
                                 title="Tes DNS"
                               >
                                 <Search className="h-3.5 w-3.5" />
                               </Button>
                               <Button
-                                variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => removeDomain(d)} disabled={getDomains().length <= 1}
                                 title="Hapus domain"
                               >
@@ -830,34 +830,35 @@ export default function AdminPage() {
                 <div className="xl:col-span-3 space-y-5">
 
                   {/* Header Cloudflare */}
-                  <div className="rounded-2xl border border-orange-400/30 bg-gradient-to-br from-orange-500/5 via-transparent to-orange-400/5 p-5">
-                    <div className="flex items-start gap-4">
-                      <div className="h-12 w-12 rounded-2xl bg-orange-500/15 border border-orange-400/30 flex items-center justify-center shrink-0">
-                        <svg className="h-6 w-6 text-orange-500" viewBox="0 0 200 210" fill="currentColor">
+                  <div className="rounded-2xl border border-orange-400/30 bg-gradient-to-br from-orange-500/5 via-transparent to-orange-400/5 p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-xl bg-orange-500/15 border border-orange-400/30 flex items-center justify-center shrink-0">
+                        <svg className="h-5 w-5 text-orange-500" viewBox="0 0 200 210" fill="currentColor">
                           <path d="M131.3 75.9c-2.8-9.8-9.8-17.5-19.1-21.3L68.6 37.1c-2.8-1.1-5.9.4-6.9 3.2-.5 1.3-.4 2.7.2 3.9l9.1 17.7c.7 1.4.7 3-.1 4.3-.8 1.3-2.1 2.2-3.6 2.4l-51.1 6.4c-3 .4-5.1 3.1-4.8 6.1.1 1.2.6 2.3 1.5 3.1l16.4 14.4c1.1 1 1.7 2.4 1.5 3.8-.2 1.4-1 2.6-2.2 3.4L4 114c-2.5 1.6-3.2 4.9-1.6 7.4.8 1.3 2.1 2.1 3.6 2.4l108.4 19.7c1.9.3 3.7-.3 5-1.6 1.3-1.3 1.9-3.1 1.6-4.9l-2.5-15.1c-.3-1.9.3-3.8 1.7-5.1 1.4-1.3 3.3-1.9 5.2-1.6l57.3 8.3c2.9.4 5.7-1.5 6.4-4.4.4-1.5.1-3.1-.8-4.3l-57.8-39z"/>
                         </svg>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-base">Koneksi Cloudflare Email Routing</h3>
-                        <p className="text-sm text-muted-foreground mt-0.5">Ikuti langkah-langkah berikut untuk menghubungkan domain Anda agar email masuk secara real-time.</p>
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-orange-400/40 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
-                              Dashboard <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          </a>
-                          <a href="https://developers.cloudflare.com/email-routing/email-workers/" target="_blank" rel="noopener noreferrer">
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
-                              Dokumentasi <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          </a>
-                          <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
-                              Workers & Pages <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          </a>
-                        </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-sm leading-tight">Koneksi Cloudflare Email Routing</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Hubungkan domain agar email masuk secara real-time.</p>
                       </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-orange-400/40 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
+                          <svg className="h-3 w-3" viewBox="0 0 200 210" fill="currentColor"><path d="M131.3 75.9c-2.8-9.8-9.8-17.5-19.1-21.3L68.6 37.1c-2.8-1.1-5.9.4-6.9 3.2-.5 1.3-.4 2.7.2 3.9l9.1 17.7c.7 1.4.7 3-.1 4.3-.8 1.3-2.1 2.2-3.6 2.4l-51.1 6.4c-3 .4-5.1 3.1-4.8 6.1.1 1.2.6 2.3 1.5 3.1l16.4 14.4c1.1 1 1.7 2.4 1.5 3.8-.2 1.4-1 2.6-2.2 3.4L4 114c-2.5 1.6-3.2 4.9-1.6 7.4.8 1.3 2.1 2.1 3.6 2.4l108.4 19.7c1.9.3 3.7-.3 5-1.6 1.3-1.3 1.9-3.1 1.6-4.9l-2.5-15.1c-.3-1.9.3-3.8 1.7-5.1 1.4-1.3 3.3-1.9 5.2-1.6l57.3 8.3c2.9.4 5.7-1.5 6.4-4.4.4-1.5.1-3.1-.8-4.3l-57.8-39z"/></svg>
+                          Dashboard <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </a>
+                      <a href="https://developers.cloudflare.com/email-routing/email-workers/" target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+                          <FileText className="h-3 w-3" />Docs <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </a>
+                      <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+                          <Zap className="h-3 w-3" />Workers <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </a>
                     </div>
                   </div>
 
@@ -904,30 +905,32 @@ export default function AdminPage() {
                               <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
                               <span className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">Pastikan Type = <strong>MX</strong>, bukan A atau AAAA!</span>
                             </div>
-                            <table className="w-full">
-                              <thead className="bg-muted">
-                                <tr className="text-[10px] text-muted-foreground font-medium">
-                                  <th className="text-left px-2.5 py-1.5">TYPE</th>
-                                  <th className="text-left px-2.5 py-1.5">NAME</th>
-                                  <th className="text-left px-2.5 py-1.5">MAIL SERVER</th>
-                                  <th className="text-left px-2.5 py-1.5">PRIORITY</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-border font-mono">
-                                {[
-                                  ["route1.mx.cloudflare.net", "10"],
-                                  ["route2.mx.cloudflare.net", "20"],
-                                  ["route3.mx.cloudflare.net", "30"],
-                                ].map(([v, p]) => (
-                                  <tr key={v} className="hover:bg-muted/40">
-                                    <td className="px-2.5 py-1.5 text-blue-500 font-bold">MX</td>
-                                    <td className="px-2.5 py-1.5 text-muted-foreground">@</td>
-                                    <td className="px-2.5 py-1.5 text-[11px]">{v}</td>
-                                    <td className="px-2.5 py-1.5 text-muted-foreground">{p}</td>
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[360px]">
+                                <thead className="bg-muted">
+                                  <tr className="text-[10px] text-muted-foreground font-medium">
+                                    <th className="text-left px-2.5 py-1.5">TYPE</th>
+                                    <th className="text-left px-2.5 py-1.5">NAME</th>
+                                    <th className="text-left px-2.5 py-1.5">MAIL SERVER</th>
+                                    <th className="text-left px-2.5 py-1.5">PRIO</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody className="divide-y divide-border font-mono">
+                                  {[
+                                    ["route1.mx.cloudflare.net", "10"],
+                                    ["route2.mx.cloudflare.net", "20"],
+                                    ["route3.mx.cloudflare.net", "30"],
+                                  ].map(([v, p]) => (
+                                    <tr key={v} className="hover:bg-muted/40">
+                                      <td className="px-2.5 py-1.5 text-blue-500 font-bold">MX</td>
+                                      <td className="px-2.5 py-1.5 text-muted-foreground">@</td>
+                                      <td className="px-2.5 py-1.5 text-[11px]">{v}</td>
+                                      <td className="px-2.5 py-1.5 text-muted-foreground">{p}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1040,20 +1043,18 @@ export default function AdminPage() {
                           <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">POST</span>
                           <code className="text-xs font-mono text-foreground">/api/webhook/inbound-email</code>
                         </div>
-                        <div className="p-3 space-y-2 text-xs">
-                          <div className="flex gap-3 items-start">
-                            <span className="text-muted-foreground w-16 shrink-0 font-medium pt-0.5">Header</span>
-                            <code className="bg-muted border border-border px-2 py-1 rounded font-mono text-[11px]">X-Webhook-Secret: &lt;secret&gt;</code>
+                        <div className="p-3 space-y-2.5 text-xs">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Header</span>
+                            <code className="block bg-muted border border-border px-2 py-1.5 rounded font-mono text-[11px] break-all">X-Webhook-Secret: &lt;secret&gt;</code>
                           </div>
-                          <div className="flex gap-3 items-start">
-                            <span className="text-muted-foreground w-16 shrink-0 font-medium pt-0.5">Body</span>
-                            <code className="bg-muted border border-border px-2 py-1 rounded font-mono text-[11px] leading-relaxed">
-                              {"{ to, from, subject,\n  textBody, htmlBody }"}
-                            </code>
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Body JSON</span>
+                            <code className="block bg-muted border border-border px-2 py-1.5 rounded font-mono text-[11px] break-all">{"{ to, from, subject, textBody, htmlBody }"}</code>
                           </div>
-                          <div className="flex gap-3 items-start">
-                            <span className="text-muted-foreground w-16 shrink-0 font-medium pt-0.5">Response</span>
-                            <code className="bg-muted border border-border px-2 py-1 rounded font-mono text-[11px]">{"{ ok: true }"}</code>
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Response</span>
+                            <code className="block bg-muted border border-border px-2 py-1.5 rounded font-mono text-[11px]">{"{ ok: true }"}</code>
                           </div>
                         </div>
                       </div>
