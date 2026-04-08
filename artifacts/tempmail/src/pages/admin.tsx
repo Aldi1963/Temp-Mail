@@ -101,7 +101,6 @@ export default function AdminPage() {
     domain: string; a: string[]; cname: string[]; mx: { exchange: string; priority: number }[];
     status: "ok" | "partial" | "error"; summary: string;
   } | null>(null);
-  const [guideType, setGuideType] = useState<"subdomain" | "root">("subdomain");
   const [inboundSecret, setInboundSecret] = useState<string | null>(null);
   const [secretLoading, setSecretLoading] = useState(false);
   const [secretVisible, setSecretVisible] = useState(false);
@@ -677,109 +676,6 @@ export default function AdminPage() {
                     <Save className="h-4 w-4" />
                     {saving ? "Menyimpan..." : "Simpan Perubahan"}
                   </Button>
-                </CardContent>
-              </Card>
-
-              {/* Panduan Pemasangan Domain */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Info className="h-4 w-4" /> Panduan Pemasangan Domain
-                  </CardTitle>
-                  <CardDescription>Langkah-langkah menghubungkan domain kustom ke aplikasi ini.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Pilih tipe */}
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button
-                      size="sm" variant={guideType === "subdomain" ? "default" : "outline"}
-                      onClick={() => setGuideType("subdomain")}
-                      className="flex-1 text-xs sm:text-sm"
-                    >Subdomain (mail.domain.com)</Button>
-                    <Button
-                      size="sm" variant={guideType === "root" ? "default" : "outline"}
-                      onClick={() => setGuideType("root")}
-                      className="flex-1 text-xs sm:text-sm"
-                    >Root Domain (domain.com)</Button>
-                  </div>
-
-                  <ol className="space-y-4">
-                    {/* Langkah 1 */}
-                    <li className="flex gap-3">
-                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">1</div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Publish aplikasi di Replit</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Klik tombol <strong>Publish</strong> di Replit. Aplikasi akan tersedia di domain <code className="bg-muted px-1 rounded text-xs">*.replit.app</code>. Catat domain tersebut — kita butuh nanti.</p>
-                      </div>
-                    </li>
-
-                    {/* Langkah 2 */}
-                    <li className="flex gap-3">
-                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">2</div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Daftarkan custom domain di Replit</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Buka halaman deployment → <strong>Custom Domain</strong> → masukkan domain Anda. Replit akan memberi DNS record yang harus dipasang.</p>
-                      </div>
-                    </li>
-
-                    {/* Langkah 3 */}
-                    <li className="flex gap-3">
-                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">3</div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Tambahkan DNS Record di panel domain Anda</p>
-                        <p className="text-xs text-muted-foreground mt-1 mb-2">Buka Cloudflare / Namecheap / panel DNS lainnya, lalu tambahkan record berikut:</p>
-                        <div className="overflow-x-auto rounded-lg border border-border">
-                          <table className="w-full text-xs font-mono bg-muted">
-                            <thead>
-                              <tr className="text-[10px] text-muted-foreground font-sans border-b border-border">
-                                <th className="text-left px-2 py-2 w-14">TYPE</th>
-                                <th className="text-left px-2 py-2 w-10">NAME</th>
-                                <th className="text-left px-2 py-2">VALUE</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {guideType === "subdomain" ? (
-                                <tr>
-                                  <td className="px-2 py-2 text-blue-500 font-bold">CNAME</td>
-                                  <td className="px-2 py-2">mail</td>
-                                  <td className="px-2 py-2 break-all">[project].replit.app</td>
-                                </tr>
-                              ) : (
-                                <tr>
-                                  <td className="px-2 py-2 text-green-500 font-bold">A</td>
-                                  <td className="px-2 py-2">@</td>
-                                  <td className="px-2 py-2">(IP dari Replit)</td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                        {guideType === "subdomain" && (
-                          <p className="text-xs text-muted-foreground mt-2">
-                            <strong>Cloudflare:</strong> Pastikan ikon awan berwarna <strong>abu-abu</strong> (proxy OFF), bukan oranye. Proxy ON akan mencegah Replit menerbitkan SSL.
-                          </p>
-                        )}
-                      </div>
-                    </li>
-
-                    {/* Langkah 4 */}
-                    <li className="flex gap-3">
-                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">4</div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Tunggu propagasi DNS (5–60 menit)</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Setelah record disimpan, DNS perlu waktu untuk menyebar. Gunakan alat <strong>Tes DNS</strong> di bawah untuk memantau statusnya.</p>
-                      </div>
-                    </li>
-
-                    {/* Langkah 5 */}
-                    <li className="flex gap-3">
-                      <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">5</div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Verifikasi di Replit & tambah ke daftar domain</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Kembali ke Replit → klik <strong>Verify</strong>. Jika berhasil, tambahkan domain ke daftar di atas agar bisa digunakan untuk generate email.</p>
-                      </div>
-                    </li>
-                  </ol>
                 </CardContent>
               </Card>
 
