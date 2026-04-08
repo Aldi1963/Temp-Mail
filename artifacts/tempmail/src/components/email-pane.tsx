@@ -102,7 +102,14 @@ export function EmailPane({
 
   const { data: generatedEmailData, isFetching: isGenerating } = useGenerateEmail(
     { domain: pendingDomain || selectedDomain, username: pendingUsername },
-    { query: { enabled: generateTrigger > 0, staleTime: 0, gcTime: 0 } }
+    {
+      query: {
+        enabled: generateTrigger > 0,
+        staleTime: 0,
+        gcTime: 0,
+        queryKey: ["/api/email/generate", { domain: pendingDomain || selectedDomain, username: pendingUsername }, generateTrigger],
+      },
+    }
   );
 
   useEffect(() => {
