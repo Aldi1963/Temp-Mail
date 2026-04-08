@@ -656,229 +656,401 @@ export default function AdminPage() {
           {/* ── DOMAIN ── */}
           {active === "domains" && (
             <>
-              <div>
-                <h1 className="text-xl font-bold">Manajemen Domain</h1>
-                <p className="text-sm text-muted-foreground mt-1">Tambah, hapus, dan verifikasi domain email yang tersedia.</p>
+              {/* ── Header ── */}
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h1 className="text-xl font-bold">Manajemen Domain</h1>
+                  <p className="text-sm text-muted-foreground mt-1">Tambah domain dan hubungkan ke Cloudflare Email Routing.</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-xs font-medium text-green-600 dark:text-green-400">{getDomains().length} Domain Aktif</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Daftar Domain */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Domain Tersedia</CardTitle>
-                  <CardDescription>{getDomains().length} domain aktif</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="contoh-domain.com"
-                      value={newDomain}
-                      onChange={(e) => setNewDomain(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") addDomain(); }}
-                      className="flex-1"
-                    />
-                    <Button onClick={addDomain} className="gap-1.5 shrink-0">
-                      <PlusCircle className="h-4 w-4" />
-                      Tambah
-                    </Button>
-                  </div>
-                  <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
-                    {loading ? (
-                      [1,2,3].map(i => <Skeleton key={i} className="h-14 w-full rounded-none" />)
-                    ) : getDomains().length === 0 ? (
-                      <div className="p-8 text-center text-muted-foreground text-sm">Belum ada domain.</div>
-                    ) : getDomains().map((d) => (
-                      <div key={d} className="flex items-center gap-2 px-3 py-2.5">
-                        <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                          <Globe className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0 mx-1">
-                          <p className="font-mono text-sm font-semibold truncate">@{d}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">user@{d}</p>
-                        </div>
-                        <a
-                          href={`https://dash.cloudflare.com/?to=/:account/${d}/email/routing`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Buka Cloudflare Email Routing"
-                        >
-                          <Button variant="outline" size="sm" className="h-7 text-xs px-2 gap-1 shrink-0 border-orange-400/40 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
-                            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 6.5C14.56 3.39 11.1 1.5 7.5 1.5A10.5 10.5 0 0 0 0 10.5c0 2.76 1.06 5.27 2.8 7.14L0 22.5h7.5A10.5 10.5 0 0 0 18 12c0-2.08-.61-4.02-1.65-5.66zM7.5 19.5H3l1.8-3.6A7.46 7.46 0 0 1 3 10.5a7.5 7.5 0 0 1 15 0 7.5 7.5 0 0 1-10.5 9z"/></svg>
-                            Cloudflare
-                            <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+              {/* ── Layout 2 kolom ── */}
+              <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+
+                {/* Kolom kiri — Daftar Domain + DNS */}
+                <div className="xl:col-span-2 space-y-5">
+
+                  {/* Daftar Domain */}
+                  <Card className="overflow-hidden">
+                    <CardHeader className="pb-3 border-b border-border bg-muted/30">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Globe className="h-4 w-4 text-primary" />
+                        Domain Tersedia
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {/* Domain list */}
+                      <div className="divide-y divide-border">
+                        {loading ? (
+                          [1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-none" />)
+                        ) : getDomains().length === 0 ? (
+                          <div className="p-8 text-center text-muted-foreground text-sm">Belum ada domain.</div>
+                        ) : getDomains().map((d) => (
+                          <div key={d} className="flex items-center gap-2 px-4 py-3 group hover:bg-muted/30 transition-colors">
+                            {/* CF Icon */}
+                            <div className="h-9 w-9 rounded-xl bg-orange-500/10 border border-orange-400/20 flex items-center justify-center shrink-0">
+                              <svg className="h-4 w-4 text-orange-500" viewBox="0 0 200 210" fill="currentColor">
+                                <path d="M131.3 75.9c-2.8-9.8-9.8-17.5-19.1-21.3L68.6 37.1c-2.8-1.1-5.9.4-6.9 3.2-.5 1.3-.4 2.7.2 3.9l9.1 17.7c.7 1.4.7 3-.1 4.3-.8 1.3-2.1 2.2-3.6 2.4l-51.1 6.4c-3 .4-5.1 3.1-4.8 6.1.1 1.2.6 2.3 1.5 3.1l16.4 14.4c1.1 1 1.7 2.4 1.5 3.8-.2 1.4-1 2.6-2.2 3.4L4 114c-2.5 1.6-3.2 4.9-1.6 7.4.8 1.3 2.1 2.1 3.6 2.4l108.4 19.7c1.9.3 3.7-.3 5-1.6 1.3-1.3 1.9-3.1 1.6-4.9l-2.5-15.1c-.3-1.9.3-3.8 1.7-5.1 1.4-1.3 3.3-1.9 5.2-1.6l57.3 8.3c2.9.4 5.7-1.5 6.4-4.4.4-1.5.1-3.1-.8-4.3l-57.8-39z"/>
+                              </svg>
+                            </div>
+                            {/* Domain Info */}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-mono text-sm font-bold truncate">@{d}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">contoh@{d}</p>
+                            </div>
+                            {/* Actions */}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <a
+                                href={`https://dash.cloudflare.com/?to=/:account/${d}/email/routing`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Buka Cloudflare Email Routing"
+                              >
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/30">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </Button>
+                              </a>
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                onClick={() => { setDnsTarget(d); }}
+                                title="Tes DNS"
+                              >
+                                <Search className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => removeDomain(d)} disabled={getDomains().length <= 1}
+                                title="Hapus domain"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Add domain */}
+                      <div className="p-3 border-t border-border bg-muted/20 space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="contoh-domain.com"
+                            value={newDomain}
+                            onChange={(e) => setNewDomain(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") addDomain(); }}
+                            className="flex-1 h-8 text-sm"
+                          />
+                          <Button onClick={addDomain} size="sm" className="gap-1.5 shrink-0 h-8">
+                            <PlusCircle className="h-3.5 w-3.5" />
+                            Tambah
                           </Button>
-                        </a>
-                        <Button
-                          variant="outline" size="sm" className="h-7 text-xs px-2 shrink-0"
-                          onClick={() => { setDnsTarget(d); setActive("domains"); }}
-                        >
-                          Tes DNS
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => removeDomain(d)} disabled={getDomains().length <= 1} title="Minimal 1 domain harus ada"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
+                        </div>
+                        <Button onClick={() => saveSettings()} disabled={saving} variant="outline" size="sm" className="w-full gap-2 h-8">
+                          <Save className="h-3.5 w-3.5" />
+                          {saving ? "Menyimpan..." : "Simpan Perubahan"}
                         </Button>
                       </div>
-                    ))}
-                  </div>
-                  <Button onClick={() => saveSettings()} disabled={saving} className="w-full gap-2">
-                    <Save className="h-4 w-4" />
-                    {saving ? "Menyimpan..." : "Simpan Perubahan"}
-                  </Button>
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
 
-              {/* Tes DNS */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Search className="h-4 w-4" /> Tes Koneksi DNS
-                  </CardTitle>
-                  <CardDescription>Periksa apakah domain sudah terdaftar dan mengarah dengan benar.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="contoh: mail.domain.com"
-                      value={dnsTarget}
-                      onChange={(e) => { setDnsTarget(e.target.value); setDnsResult(null); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") checkDns(); }}
-                      className="flex-1"
-                    />
-                    <Button onClick={checkDns} disabled={dnsChecking} className="gap-1.5 shrink-0">
-                      <RefreshCw className={`h-4 w-4 ${dnsChecking ? "animate-spin" : ""}`} />
-                      {dnsChecking ? "Mengecek..." : "Cek DNS"}
-                    </Button>
-                  </div>
+                  {/* Tes DNS */}
+                  <Card>
+                    <CardHeader className="pb-3 border-b border-border bg-muted/30">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Search className="h-4 w-4 text-primary" />
+                        Tes Koneksi DNS
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="domain.com"
+                          value={dnsTarget}
+                          onChange={(e) => { setDnsTarget(e.target.value); setDnsResult(null); }}
+                          onKeyDown={(e) => { if (e.key === "Enter") checkDns(); }}
+                          className="flex-1 h-8 text-sm"
+                        />
+                        <Button onClick={checkDns} disabled={dnsChecking} size="sm" className="gap-1.5 shrink-0 h-8">
+                          <RefreshCw className={`h-3.5 w-3.5 ${dnsChecking ? "animate-spin" : ""}`} />
+                          {dnsChecking ? "..." : "Cek"}
+                        </Button>
+                      </div>
 
-                  {dnsResult && (
-                    <div className={`rounded-lg border p-4 space-y-3 ${
-                      dnsResult.status === "ok" ? "border-green-500/40 bg-green-500/5"
-                      : dnsResult.status === "partial" ? "border-yellow-500/40 bg-yellow-500/5"
-                      : "border-destructive/40 bg-destructive/5"
-                    }`}>
-                      {/* Status Badge */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {dnsResult.status === "ok" && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
-                        {dnsResult.status === "partial" && <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}
-                        {dnsResult.status === "error" && <ShieldX className="h-4 w-4 text-destructive shrink-0" />}
-                        <span className={`text-sm font-medium shrink-0 ${
-                          dnsResult.status === "ok" ? "text-green-600 dark:text-green-400"
-                          : dnsResult.status === "partial" ? "text-yellow-600 dark:text-yellow-400"
-                          : "text-destructive"
+                      {dnsResult && (
+                        <div className={`rounded-xl border p-3 space-y-2.5 ${
+                          dnsResult.status === "ok" ? "border-green-500/40 bg-green-500/5"
+                          : dnsResult.status === "partial" ? "border-yellow-500/40 bg-yellow-500/5"
+                          : "border-destructive/40 bg-destructive/5"
                         }`}>
-                          {dnsResult.status === "ok" ? "DNS OK" : dnsResult.status === "partial" ? "Sebagian Ditemukan" : "Tidak Ditemukan"}
-                        </span>
-                        <span className="text-xs text-muted-foreground font-mono truncate ml-auto min-w-0">{dnsResult.domain}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{dnsResult.summary}</p>
-                      <Separator />
-                      <div className="space-y-2 text-xs">
-                        {dnsResult.a.length > 0 && (
-                          <div className="flex gap-2">
-                            <span className="text-muted-foreground w-16 shrink-0">A Record</span>
-                            <div className="flex flex-wrap gap-1">
-                              {dnsResult.a.map(ip => <code key={ip} className="bg-muted px-1.5 py-0.5 rounded font-mono">{ip}</code>)}
-                            </div>
+                          <div className="flex items-center gap-2">
+                            {dnsResult.status === "ok" && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
+                            {dnsResult.status === "partial" && <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}
+                            {dnsResult.status === "error" && <ShieldX className="h-4 w-4 text-destructive shrink-0" />}
+                            <span className={`text-sm font-semibold ${
+                              dnsResult.status === "ok" ? "text-green-600 dark:text-green-400"
+                              : dnsResult.status === "partial" ? "text-yellow-600 dark:text-yellow-400"
+                              : "text-destructive"
+                            }`}>
+                              {dnsResult.status === "ok" ? "DNS OK" : dnsResult.status === "partial" ? "Sebagian" : "Tidak Ditemukan"}
+                            </span>
+                            <code className="text-[10px] text-muted-foreground font-mono ml-auto truncate">{dnsResult.domain}</code>
                           </div>
-                        )}
-                        {dnsResult.cname.length > 0 && (
-                          <div className="flex gap-2">
-                            <span className="text-muted-foreground w-16 shrink-0">CNAME</span>
-                            <div className="flex flex-wrap gap-1">
-                              {dnsResult.cname.map(c => <code key={c} className="bg-muted px-1.5 py-0.5 rounded font-mono">{c}</code>)}
+                          <p className="text-xs text-muted-foreground">{dnsResult.summary}</p>
+                          {(dnsResult.mx.length > 0 || dnsResult.a.length > 0) && (
+                            <div className="space-y-1.5 pt-1 border-t border-border/50">
+                              {dnsResult.mx.length > 0 && (
+                                <div className="flex gap-2 text-[11px]">
+                                  <span className="text-muted-foreground w-8 shrink-0 font-medium">MX</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {dnsResult.mx.map(m => <code key={m.exchange} className="bg-muted px-1.5 py-0.5 rounded font-mono">{m.priority} {m.exchange}</code>)}
+                                  </div>
+                                </div>
+                              )}
+                              {dnsResult.a.length > 0 && (
+                                <div className="flex gap-2 text-[11px]">
+                                  <span className="text-muted-foreground w-8 shrink-0 font-medium">A</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {dnsResult.a.map(ip => <code key={ip} className="bg-muted px-1.5 py-0.5 rounded font-mono">{ip}</code>)}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
-                        {dnsResult.mx.length > 0 && (
-                          <div className="flex gap-2">
-                            <span className="text-muted-foreground w-16 shrink-0">MX</span>
-                            <div className="flex flex-wrap gap-1">
-                              {dnsResult.mx.map(m => <code key={m.exchange} className="bg-muted px-1.5 py-0.5 rounded font-mono">{m.priority} {m.exchange}</code>)}
-                            </div>
-                          </div>
-                        )}
-                        {dnsResult.a.length === 0 && dnsResult.cname.length === 0 && dnsResult.mx.length === 0 && (
-                          <p className="text-muted-foreground italic">Tidak ada DNS record yang ditemukan. Periksa konfigurasi DNS Anda.</p>
-                        )}
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Kolom kanan — Panduan Cloudflare */}
+                <div className="xl:col-span-3 space-y-5">
+
+                  {/* Header Cloudflare */}
+                  <div className="rounded-2xl border border-orange-400/30 bg-gradient-to-br from-orange-500/5 via-transparent to-orange-400/5 p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-orange-500/15 border border-orange-400/30 flex items-center justify-center shrink-0">
+                        <svg className="h-6 w-6 text-orange-500" viewBox="0 0 200 210" fill="currentColor">
+                          <path d="M131.3 75.9c-2.8-9.8-9.8-17.5-19.1-21.3L68.6 37.1c-2.8-1.1-5.9.4-6.9 3.2-.5 1.3-.4 2.7.2 3.9l9.1 17.7c.7 1.4.7 3-.1 4.3-.8 1.3-2.1 2.2-3.6 2.4l-51.1 6.4c-3 .4-5.1 3.1-4.8 6.1.1 1.2.6 2.3 1.5 3.1l16.4 14.4c1.1 1 1.7 2.4 1.5 3.8-.2 1.4-1 2.6-2.2 3.4L4 114c-2.5 1.6-3.2 4.9-1.6 7.4.8 1.3 2.1 2.1 3.6 2.4l108.4 19.7c1.9.3 3.7-.3 5-1.6 1.3-1.3 1.9-3.1 1.6-4.9l-2.5-15.1c-.3-1.9.3-3.8 1.7-5.1 1.4-1.3 3.3-1.9 5.2-1.6l57.3 8.3c2.9.4 5.7-1.5 6.4-4.4.4-1.5.1-3.1-.8-4.3l-57.8-39z"/>
+                        </svg>
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Cloudflare Integration Links */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <svg className="h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 6.5C14.56 3.39 11.1 1.5 7.5 1.5A10.5 10.5 0 0 0 0 10.5c0 2.76 1.06 5.27 2.8 7.14L0 22.5h7.5A10.5 10.5 0 0 0 18 12c0-2.08-.61-4.02-1.65-5.66zM7.5 19.5H3l1.8-3.6A7.46 7.46 0 0 1 3 10.5a7.5 7.5 0 0 1 15 0 7.5 7.5 0 0 1-10.5 9z"/></svg>
-                    Cloudflare Email Workers
-                  </CardTitle>
-                  <CardDescription>Koneksikan domain Anda di Cloudflare untuk menerima email secara real-time.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-
-                  {/* Quick links */}
-                  <div className="flex flex-wrap gap-2">
-                    <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm" className="gap-1.5 border-orange-400/40 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 6.5C14.56 3.39 11.1 1.5 7.5 1.5A10.5 10.5 0 0 0 0 10.5c0 2.76 1.06 5.27 2.8 7.14L0 22.5h7.5A10.5 10.5 0 0 0 18 12c0-2.08-.61-4.02-1.65-5.66zM7.5 19.5H3l1.8-3.6A7.46 7.46 0 0 1 3 10.5a7.5 7.5 0 0 1 15 0 7.5 7.5 0 0 1-10.5 9z"/></svg>
-                        Cloudflare Dashboard
-                        <ExternalLink className="h-3 w-3 opacity-60" />
-                      </Button>
-                    </a>
-                    <a href="https://developers.cloudflare.com/email-routing/email-workers/" target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
-                        <FileText className="h-3.5 w-3.5" />
-                        Dokumentasi Email Workers
-                        <ExternalLink className="h-3 w-3 opacity-60" />
-                      </Button>
-                    </a>
-                    <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
-                        <Zap className="h-3.5 w-3.5" />
-                        Workers &amp; Pages
-                        <ExternalLink className="h-3 w-3 opacity-60" />
-                      </Button>
-                    </a>
-                  </div>
-
-                  <Separator />
-
-                  {/* Webhook Secret */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Webhook Secret</p>
-                    {!secretVisible ? (
-                      <Button size="sm" variant="outline" onClick={loadInboundSecret} disabled={secretLoading} className="gap-2">
-                        <Key className="h-3.5 w-3.5" />
-                        {secretLoading ? "Memuat..." : "Tampilkan Secret"}
-                      </Button>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 min-w-0 bg-muted px-3 py-2 rounded-lg text-xs font-mono break-all border border-border">
-                          {inboundSecret}
-                        </code>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-                          onClick={() => copyText(inboundSecret!, "Secret")}>
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-base">Koneksi Cloudflare Email Routing</h3>
+                        <p className="text-sm text-muted-foreground mt-0.5">Ikuti langkah-langkah berikut untuk menghubungkan domain Anda agar email masuk secara real-time.</p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-orange-400/40 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
+                              Dashboard <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </a>
+                          <a href="https://developers.cloudflare.com/email-routing/email-workers/" target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+                              Dokumentasi <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </a>
+                          <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+                              Workers & Pages <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </a>
+                        </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Endpoint info */}
-                  <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Webhook Endpoint</p>
-                    <code className="block text-xs font-mono break-all text-foreground">POST /api/webhook/inbound-email</code>
-                    <div className="flex gap-4 text-[11px] text-muted-foreground flex-wrap">
-                      <span>Header: <code className="bg-background px-1 rounded">X-Webhook-Secret</code></span>
-                      <span>Body: <code className="bg-background px-1 rounded">to, from, subject, textBody</code></span>
                     </div>
                   </div>
 
-                </CardContent>
-              </Card>
+                  {/* Langkah-langkah */}
+                  <Card>
+                    <CardHeader className="pb-3 border-b border-border bg-muted/30">
+                      <CardTitle className="text-sm font-semibold">Langkah-langkah Setup</CardTitle>
+                      <CardDescription className="text-xs">Ikuti urutan ini untuk mengaktifkan penerimaan email real-time.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-0">
+
+                      {/* Step 1 */}
+                      <div className="flex gap-3 pb-5 relative">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0 z-10">1</div>
+                          <div className="w-px flex-1 bg-border mt-1" />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5 pb-2">
+                          <p className="text-sm font-semibold mb-1">Aktifkan Cloudflare Email Routing</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Buka <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">Cloudflare Dashboard</a>, pilih domain Anda → menu <strong>Email</strong> → <strong>Email Routing</strong> → klik <strong>Enable Email Routing</strong>.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Step 2 */}
+                      <div className="flex gap-3 pb-5 relative">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0 z-10">2</div>
+                          <div className="w-px flex-1 bg-border mt-1" />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5 pb-2">
+                          <p className="text-sm font-semibold mb-1.5">Tambahkan MX Record</p>
+                          <p className="text-xs text-muted-foreground mb-2">Di <strong>DNS</strong> → <strong>Records</strong>, tambahkan 3 record MX berikut:</p>
+                          <div className="rounded-lg overflow-hidden border border-border text-xs">
+                            <table className="w-full">
+                              <thead className="bg-muted">
+                                <tr className="text-[10px] text-muted-foreground font-medium">
+                                  <th className="text-left px-2.5 py-1.5">TYPE</th>
+                                  <th className="text-left px-2.5 py-1.5">NAME</th>
+                                  <th className="text-left px-2.5 py-1.5">MAIL SERVER</th>
+                                  <th className="text-left px-2.5 py-1.5">PRIO</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border font-mono">
+                                {[
+                                  ["route1.mx.cloudflare.net", "10"],
+                                  ["route2.mx.cloudflare.net", "20"],
+                                  ["route3.mx.cloudflare.net", "30"],
+                                ].map(([v, p]) => (
+                                  <tr key={v} className="hover:bg-muted/40">
+                                    <td className="px-2.5 py-1.5 text-blue-500 font-bold">MX</td>
+                                    <td className="px-2.5 py-1.5 text-muted-foreground">@</td>
+                                    <td className="px-2.5 py-1.5 text-[11px]">{v}</td>
+                                    <td className="px-2.5 py-1.5 text-muted-foreground">{p}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 3 */}
+                      <div className="flex gap-3 pb-5 relative">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0 z-10">3</div>
+                          <div className="w-px flex-1 bg-border mt-1" />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5 pb-2">
+                          <p className="text-sm font-semibold mb-1">Salin Webhook Secret</p>
+                          <p className="text-xs text-muted-foreground mb-2">Salin secret ini — Anda akan membutuhkannya di langkah berikutnya.</p>
+                          {!secretVisible ? (
+                            <Button size="sm" variant="outline" onClick={loadInboundSecret} disabled={secretLoading} className="gap-2 h-8">
+                              <Key className="h-3.5 w-3.5" />
+                              {secretLoading ? "Memuat..." : "Tampilkan Webhook Secret"}
+                            </Button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <code className="flex-1 min-w-0 bg-muted px-3 py-2 rounded-lg text-xs font-mono break-all border border-border">
+                                {inboundSecret}
+                              </code>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                                onClick={() => copyText(inboundSecret!, "Secret")}>
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Step 4 */}
+                      <div className="flex gap-3 pb-5 relative">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0 z-10">4</div>
+                          <div className="w-px flex-1 bg-border mt-1" />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5 pb-2">
+                          <p className="text-sm font-semibold mb-1">Buat & Deploy Email Worker</p>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Buka <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">Workers & Pages</a> → <strong>Create Worker</strong> → tempel kode dari file <code className="bg-muted px-1 rounded">cloudflare-worker/email-worker.js</code> di project ini.
+                          </p>
+                          <p className="text-xs text-muted-foreground">Di <strong>Settings → Variables &amp; Secrets</strong>, tambahkan 2 environment variable:</p>
+                          <div className="mt-2 rounded-lg border border-border bg-muted/50 overflow-hidden">
+                            <div className="px-3 py-2 border-b border-border/50 flex items-center justify-between">
+                              <div>
+                                <span className="text-[11px] font-mono font-semibold text-purple-500">TEMPMAIL_WEBHOOK_URL</span>
+                              </div>
+                            </div>
+                            <div className="px-3 py-2 font-mono text-[11px] text-muted-foreground break-all">
+                              https://yourapp.replit.app/api/webhook/inbound-email
+                            </div>
+                            <div className="px-3 py-2 border-t border-b border-border/50">
+                              <span className="text-[11px] font-mono font-semibold text-purple-500">TEMPMAIL_WEBHOOK_SECRET</span>
+                            </div>
+                            <div className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                              (nilai dari Langkah 3)
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-2">Tambahkan juga dependensi npm <code className="bg-muted px-1 rounded">postal-mime</code> di dalam Worker.</p>
+                        </div>
+                      </div>
+
+                      {/* Step 5 */}
+                      <div className="flex gap-3 pb-5 relative">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0 z-10">5</div>
+                          <div className="w-px flex-1 bg-border mt-1" />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5 pb-2">
+                          <p className="text-sm font-semibold mb-1">Hubungkan Worker ke Routing Rule</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Kembali ke <strong>Email Routing</strong> → tab <strong>Routing Rules</strong> → bagian <strong>Catch-all address</strong> → ubah action ke <strong>Send to a Worker</strong> → pilih worker yang tadi dibuat → klik <strong>Save</strong>.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Step 6 */}
+                      <div className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div className="h-7 w-7 rounded-full bg-green-500 text-white text-xs font-bold flex items-center justify-center shrink-0">6</div>
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <p className="text-sm font-semibold mb-1">Tambah Domain di TempMail</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Tambahkan domain ke daftar <strong>Domain Tersedia</strong> di kolom kiri, lalu klik <strong>Simpan Perubahan</strong>. Email masuk akan langsung tersimpan ke inbox secara real-time.
+                          </p>
+                          <div className="mt-2 flex items-center gap-2 p-2.5 bg-green-500/5 border border-green-500/20 rounded-lg">
+                            <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                            <p className="text-xs text-green-700 dark:text-green-300 font-medium">Setup selesai! Email akan diterima secara real-time.</p>
+                          </div>
+                        </div>
+                      </div>
+
+                    </CardContent>
+                  </Card>
+
+                  {/* Webhook Endpoint Info */}
+                  <Card>
+                    <CardHeader className="pb-3 border-b border-border bg-muted/30">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-primary" />
+                        Referensi Webhook Endpoint
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="rounded-lg bg-muted/50 border border-border overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted">
+                          <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">POST</span>
+                          <code className="text-xs font-mono text-foreground">/api/webhook/inbound-email</code>
+                        </div>
+                        <div className="p-3 space-y-2 text-xs">
+                          <div className="flex gap-3 items-start">
+                            <span className="text-muted-foreground w-16 shrink-0 font-medium pt-0.5">Header</span>
+                            <code className="bg-muted border border-border px-2 py-1 rounded font-mono text-[11px]">X-Webhook-Secret: &lt;secret&gt;</code>
+                          </div>
+                          <div className="flex gap-3 items-start">
+                            <span className="text-muted-foreground w-16 shrink-0 font-medium pt-0.5">Body</span>
+                            <code className="bg-muted border border-border px-2 py-1 rounded font-mono text-[11px] leading-relaxed">
+                              {"{ to, from, subject,\n  textBody, htmlBody }"}
+                            </code>
+                          </div>
+                          <div className="flex gap-3 items-start">
+                            <span className="text-muted-foreground w-16 shrink-0 font-medium pt-0.5">Response</span>
+                            <code className="bg-muted border border-border px-2 py-1 rounded font-mono text-[11px]">{"{ ok: true }"}</code>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                </div>
+              </div>
             </>
           )}
 
