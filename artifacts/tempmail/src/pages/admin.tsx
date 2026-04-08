@@ -895,11 +895,11 @@ export default function AdminPage() {
                   {/* Step 1 — Webhook Secret */}
                   <div className="space-y-2">
                     <p className="text-sm font-semibold flex items-center gap-2">
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">1</span>
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
                       Webhook Secret
                     </p>
                     <p className="text-xs text-muted-foreground pl-7">
-                      Ini adalah kunci rahasia antara Worker dan TempMail. Salin dan simpan — akan dimasukkan ke Environment Variables Worker.
+                      Kunci rahasia antara Worker dan TempMail. Salin dan simpan untuk dimasukkan ke Environment Variables Worker.
                     </p>
                     <div className="pl-7">
                       {!secretVisible ? (
@@ -909,7 +909,7 @@ export default function AdminPage() {
                         </Button>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <code className="flex-1 bg-muted px-3 py-2 rounded-lg text-xs font-mono break-all border border-border">
+                          <code className="flex-1 min-w-0 bg-muted px-3 py-2 rounded-lg text-xs font-mono break-all border border-border">
                             {inboundSecret}
                           </code>
                           <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0"
@@ -924,84 +924,85 @@ export default function AdminPage() {
                   {/* Step 2 — MX Record */}
                   <div className="space-y-2">
                     <p className="text-sm font-semibold flex items-center gap-2">
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">2</span>
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
                       Tambahkan MX Record di Cloudflare
                     </p>
                     <p className="text-xs text-muted-foreground pl-7">
-                      Buka Cloudflare DNS untuk domain Anda, tambahkan record berikut agar email masuk ke Cloudflare:
+                      Tambahkan record MX berikut di Cloudflare DNS domain Anda:
                     </p>
-                    <div className="pl-7">
-                      <div className="overflow-x-auto rounded-lg border border-border">
-                        <table className="w-full text-xs font-mono min-w-[300px] bg-muted">
-                          <thead>
-                            <tr className="text-[10px] text-muted-foreground font-sans border-b border-border">
-                              <th className="text-left px-3 py-2">TYPE</th><th className="text-left px-3 py-2">NAME</th>
-                              <th className="text-left px-3 py-2">VALUE</th><th className="text-left px-3 py-2">PRIO</th>
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                      <table className="w-full text-xs font-mono bg-muted">
+                        <thead>
+                          <tr className="text-[10px] text-muted-foreground font-sans border-b border-border">
+                            <th className="text-left px-2 py-2 w-10">TYPE</th>
+                            <th className="text-left px-2 py-2 w-8">NAME</th>
+                            <th className="text-left px-2 py-2">VALUE</th>
+                            <th className="text-left px-2 py-2 w-12">PRIO</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {[["route1.mx.cloudflare.net","10"],["route2.mx.cloudflare.net","20"],["route3.mx.cloudflare.net","30"]].map(([v,p]) => (
+                            <tr key={v}>
+                              <td className="px-2 py-1.5 text-blue-500 font-bold">MX</td>
+                              <td className="px-2 py-1.5">@</td>
+                              <td className="px-2 py-1.5 break-all">{v}</td>
+                              <td className="px-2 py-1.5">{p}</td>
                             </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/50">
-                            {[["route1.mx.cloudflare.net","10"],["route2.mx.cloudflare.net","20"],["route3.mx.cloudflare.net","30"]].map(([v,p]) => (
-                              <tr key={v}>
-                                <td className="px-3 py-1.5 text-blue-500 font-bold">MX</td>
-                                <td className="px-3 py-1.5">@</td>
-                                <td className="px-3 py-1.5">{v}</td>
-                                <td className="px-3 py-1.5">{p}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
                   {/* Step 3 — Aktifkan Email Routing */}
                   <div className="space-y-2">
                     <p className="text-sm font-semibold flex items-center gap-2">
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">3</span>
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">3</span>
                       Aktifkan Email Routing di Cloudflare
                     </p>
                     <p className="text-xs text-muted-foreground pl-7">
-                      Buka Cloudflare Dashboard → pilih domain → menu <strong>Email</strong> → <strong>Email Routing</strong> → klik <strong>Enable Email Routing</strong>.
+                      Cloudflare Dashboard → pilih domain → menu <strong>Email</strong> → <strong>Email Routing</strong> → klik <strong>Enable Email Routing</strong>.
                     </p>
                   </div>
 
                   {/* Step 4 — Deploy Worker */}
                   <div className="space-y-2">
                     <p className="text-sm font-semibold flex items-center gap-2">
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">4</span>
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">4</span>
                       Deploy Cloudflare Email Worker
                     </p>
                     <div className="pl-7 space-y-2">
                       <p className="text-xs text-muted-foreground">
-                        Buka <strong>Workers & Pages</strong> → <strong>Create Worker</strong> → tempel kode dari file <code className="bg-muted px-1 rounded">cloudflare-worker/email-worker.js</code> di project ini.
+                        Buka <strong>Workers &amp; Pages</strong> → <strong>Create Worker</strong> → tempel kode dari file{" "}
+                        <code className="bg-muted px-1 rounded break-all">cloudflare-worker/email-worker.js</code> di project ini.
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Lalu di <strong>Settings → Variables</strong> tambahkan:
-                      </p>
-                      <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-2 overflow-x-auto">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-purple-500">TEMPMAIL_WEBHOOK_URL</span>
-                          <span className="text-muted-foreground break-all">https://yourapp.replit.app/api/webhook/inbound-email</span>
-                        </div>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-purple-500">TEMPMAIL_WEBHOOK_SECRET</span>
-                          <span className="text-muted-foreground">(salin dari Langkah 1)</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Tambahkan juga dependensi <code className="bg-muted px-1 rounded">postal-mime</code> via npm di dalam Worker.
+                        Di <strong>Settings → Variables</strong> tambahkan:
                       </p>
                     </div>
+                    <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-2">
+                      <div>
+                        <div className="text-purple-500 font-medium">TEMPMAIL_WEBHOOK_URL</div>
+                        <div className="text-muted-foreground break-all mt-0.5">https://yourapp.replit.app/api/webhook/inbound-email</div>
+                      </div>
+                      <div>
+                        <div className="text-purple-500 font-medium">TEMPMAIL_WEBHOOK_SECRET</div>
+                        <div className="text-muted-foreground mt-0.5">(salin dari Langkah 1)</div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-7">
+                      Tambahkan juga dependensi <code className="bg-muted px-1 rounded">postal-mime</code> via npm di dalam Worker.
+                    </p>
                   </div>
 
                   {/* Step 5 — Hubungkan Worker ke Email Routing */}
                   <div className="space-y-2">
                     <p className="text-sm font-semibold flex items-center gap-2">
-                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">5</span>
+                      <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">5</span>
                       Hubungkan Worker ke Email Routing
                     </p>
                     <p className="text-xs text-muted-foreground pl-7">
-                      Kembali ke <strong>Email Routing</strong> → tab <strong>Routing Rules</strong> → <strong>Catch-all address</strong> → ubah action menjadi <strong>Send to a Worker</strong> → pilih worker yang baru dibuat.
+                      <strong>Email Routing</strong> → tab <strong>Routing Rules</strong> → <strong>Catch-all address</strong> → ubah action ke <strong>Send to a Worker</strong> → pilih worker Anda.
                     </p>
                   </div>
 
