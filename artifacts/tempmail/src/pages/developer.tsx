@@ -334,13 +334,13 @@ export default function DeveloperPage() {
             <div className="flex items-center gap-2">
               <Key className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold">API Keys</h2>
-              <Badge variant="secondary" className="text-xs">{keys.length}/10</Badge>
+              <Badge variant="secondary" className="text-xs">{keys.length}/1</Badge>
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={load}>
                 <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               </Button>
-              <NewKeyModal onCreated={(k) => setRevealKey(k)} />
+              {keys.length < 1 && <NewKeyModal onCreated={(k) => setRevealKey(k)} />}
             </div>
           </div>
 
@@ -389,9 +389,9 @@ export default function DeveloperPage() {
             <div className="flex items-center gap-2">
               <Webhook className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold">Webhooks</h2>
-              <Badge variant="secondary" className="text-xs">{webhooks.length}/5</Badge>
+              <Badge variant="secondary" className="text-xs">{webhooks.length}/1</Badge>
             </div>
-            <NewWebhookModal onCreated={(s) => setRevealSecret(s)} />
+            {webhooks.length < 1 && <NewWebhookModal onCreated={(s) => setRevealSecret(s)} />}
           </div>
 
           {loading ? (

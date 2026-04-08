@@ -40,8 +40,8 @@ router.post("/keys", async (req, res) => {
     .select({ id: apiKeysTable.id })
     .from(apiKeysTable)
     .where(eq(apiKeysTable.userId, userId));
-  if (existing.length >= 10) {
-    res.status(400).json({ error: "Bad request", message: "Maksimal 10 API key per akun." });
+  if (existing.length >= 1) {
+    res.status(400).json({ error: "Bad request", message: "Hanya boleh 1 API key per akun. Hapus yang ada sebelum membuat yang baru." });
     return;
   }
 
@@ -121,8 +121,8 @@ router.post("/webhooks", async (req, res) => {
     .select({ id: webhooksTable.id })
     .from(webhooksTable)
     .where(eq(webhooksTable.userId, userId));
-  if (existing.length >= 5) {
-    res.status(400).json({ error: "Bad request", message: "Maksimal 5 webhook per akun." });
+  if (existing.length >= 1) {
+    res.status(400).json({ error: "Bad request", message: "Hanya boleh 1 webhook per akun. Hapus yang ada sebelum menambah yang baru." });
     return;
   }
 
