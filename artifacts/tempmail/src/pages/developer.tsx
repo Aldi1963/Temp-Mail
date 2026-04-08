@@ -74,7 +74,7 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
-function NewKeyModal({ onCreated }: { onCreated: (key: string) => void }) {
+function NewKeyModal({ onCreated, rowTrigger }: { onCreated: (key: string) => void; rowTrigger?: boolean }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -96,7 +96,14 @@ function NewKeyModal({ onCreated }: { onCreated: (key: string) => void }) {
     onCreated(data.key);
   };
 
-  if (!open) return (
+  if (!open) return rowTrigger ? (
+    <button
+      onClick={() => setOpen(true)}
+      className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0"
+    >
+      <Plus className="h-3.5 w-3.5" /> Buat API Key
+    </button>
+  ) : (
     <Button size="sm" onClick={() => setOpen(true)} className="gap-1.5">
       <Plus className="h-4 w-4" /> Buat API Key
     </Button>
@@ -157,7 +164,7 @@ function RevealKeyModal({ rawKey, onClose }: { rawKey: string; onClose: () => vo
   );
 }
 
-function NewWebhookModal({ onCreated }: { onCreated: (secret: string) => void }) {
+function NewWebhookModal({ onCreated, rowTrigger }: { onCreated: (secret: string) => void; rowTrigger?: boolean }) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [events, setEvents] = useState<string[]>(["new_message"]);
@@ -185,7 +192,14 @@ function NewWebhookModal({ onCreated }: { onCreated: (secret: string) => void })
     onCreated(data.secret);
   };
 
-  if (!open) return (
+  if (!open) return rowTrigger ? (
+    <button
+      onClick={() => setOpen(true)}
+      className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0"
+    >
+      <Plus className="h-3.5 w-3.5" /> Tambah Webhook
+    </button>
+  ) : (
     <Button size="sm" onClick={() => setOpen(true)} className="gap-1.5">
       <Plus className="h-4 w-4" /> Tambah Webhook
     </Button>
@@ -397,161 +411,179 @@ export default function DeveloperPage() {
         </div>
 
         {/* ── API Keys ── */}
-        <section className="space-y-4">
+        <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">API Keys</h2>
-              <Badge variant="secondary" className="text-xs">{keys.length}/1</Badge>
+              <Key className="h-4.5 w-4.5 text-primary" />
+              <h2 className="text-base font-semibold">API Key</h2>
+              <Badge variant="secondary" className="text-[11px] h-5 px-1.5">{keys.length}/1</Badge>
             </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={load}>
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              </Button>
-              {keys.length < 1 && <NewKeyModal onCreated={(k) => setRevealKey(k)} />}
-            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={load}>
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
 
           {loading ? (
-            <div className="text-sm text-muted-foreground text-center py-8">Memuat...</div>
+            <div className="flex items-center rounded-xl border border-border/60 bg-card h-11 px-3 gap-2">
+              <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+              <div className="flex-1 h-3 bg-muted animate-pulse rounded" />
+            </div>
           ) : keys.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed p-8 text-center">
-              <Key className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Belum ada API key. Buat satu untuk mulai.</p>
+            /* Empty state — same row style with "Buat" button */
+            <div className="flex items-center rounded-xl border border-dashed border-border bg-card overflow-hidden h-11">
+              <div className="flex items-center gap-1.5 px-3 h-full bg-muted/40 border-r border-border shrink-0">
+                <Key className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground">API Key</span>
+              </div>
+              <span className="flex-1 px-3 text-xs text-muted-foreground italic">Belum ada API key</span>
+              <NewKeyModal onCreated={(k) => setRevealKey(k)} rowTrigger />
             </div>
           ) : (
-            <div className="rounded-xl border overflow-hidden">
-              {keys.map((k, i) => (
-                <div key={k.id} className={`flex items-center gap-3 px-4 py-3 ${i < keys.length - 1 ? "border-b" : ""}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{k.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                        {k.keyPrefix}•••
-                      </code>
-                      <span className="text-xs text-muted-foreground">Dibuat {fmt(k.createdAt)}</span>
-                      {k.lastUsedAt && (
-                        <span className="text-xs text-muted-foreground">· Dipakai {fmt(k.lastUsedAt)}</span>
-                      )}
-                    </div>
+            keys.map((k) => (
+              <div key={k.id} className="rounded-xl border border-border/60 bg-card overflow-hidden">
+                {/* Inline row */}
+                <div className="flex items-center h-11">
+                  {/* Label */}
+                  <div className="flex items-center gap-1.5 px-3 h-full bg-muted/50 border-r border-border/60 shrink-0">
+                    <Key className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">API Key</span>
+                  </div>
+                  {/* Key value */}
+                  <div className="flex-1 min-w-0 px-3">
+                    <code className="text-sm font-mono font-medium text-foreground truncate block">
+                      {k.keyPrefix}<span className="text-muted-foreground">•••</span>
+                    </code>
+                  </div>
+                  {/* Copy */}
+                  <CopyButton value={k.keyPrefix + "•••"} />
+                  {/* Regenerate */}
+                  <button
+                    onClick={() => setConfirmRegen({ type: "key", id: k.id })}
+                    className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0"
+                    title="Regenerate API key baru"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Regenerate
+                  </button>
+                </div>
+                {/* Meta row */}
+                <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/40 bg-muted/20">
+                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground/70">{k.name}</span>
+                    <span>Dibuat {fmt(k.createdAt)}</span>
+                    {k.lastUsedAt && <span>· Dipakai {fmt(k.lastUsedAt)}</span>}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-amber-500 hover:text-amber-600"
-                    title="Regenerate key baru"
-                    onClick={() => setConfirmRegen({ type: "key", id: k.id })}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
                     onClick={() => deleteKey(k.id)}
+                    title="Hapus API key"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
         </section>
 
         {/* ── Webhooks ── */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Webhook className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Webhooks</h2>
-              <Badge variant="secondary" className="text-xs">{webhooks.length}/1</Badge>
-            </div>
-            {webhooks.length < 1 && <NewWebhookModal onCreated={(s) => setRevealSecret(s)} />}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Webhook className="h-4.5 w-4.5 text-primary" />
+            <h2 className="text-base font-semibold">Webhook</h2>
+            <Badge variant="secondary" className="text-[11px] h-5 px-1.5">{webhooks.length}/1</Badge>
           </div>
 
           {loading ? (
-            <div className="text-sm text-muted-foreground text-center py-8">Memuat...</div>
+            <div className="flex items-center rounded-xl border border-border/60 bg-card h-11 px-3 gap-2">
+              <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+              <div className="flex-1 h-3 bg-muted animate-pulse rounded" />
+            </div>
           ) : webhooks.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed p-8 text-center">
-              <Webhook className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Belum ada webhook. Tambah satu untuk mendapat notifikasi.</p>
+            /* Empty state — same row style */
+            <div className="flex items-center rounded-xl border border-dashed border-border bg-card overflow-hidden h-11">
+              <div className="flex items-center gap-1.5 px-3 h-full bg-muted/40 border-r border-border shrink-0">
+                <Webhook className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground">Webhook</span>
+              </div>
+              <span className="flex-1 px-3 text-xs text-muted-foreground italic">Belum ada webhook</span>
+              <NewWebhookModal onCreated={(s) => setRevealSecret(s)} rowTrigger />
             </div>
           ) : (
-            <div className="rounded-xl border overflow-hidden">
-              {webhooks.map((w, i) => (
-                <div key={w.id} className={`px-4 py-3 ${i < webhooks.length - 1 ? "border-b" : ""}`}>
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <code className="text-xs font-mono text-foreground truncate max-w-xs">{w.url}</code>
-                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${w.active ? "bg-green-500" : "bg-muted-foreground"}`} />
-                      </div>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {w.events.map((ev) => (
-                          <Badge key={ev} variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                            {ev}
-                          </Badge>
-                        ))}
-                        {w.failCount > 0 && (
-                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">
-                            {w.failCount} gagal
-                          </Badge>
-                        )}
-                      </div>
-                      {w.lastTriggeredAt && (
-                        <p className="text-xs text-muted-foreground mt-0.5">Terakhir dipicu: {fmt(w.lastTriggeredAt)}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-amber-500 hover:text-amber-600"
-                        title="Rotate signing secret"
-                        onClick={() => setConfirmRegen({ type: "secret", id: w.id })}
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Test webhook"
-                        disabled={testLoading === w.id}
-                        onClick={() => testWebhook(w.id)}
-                      >
-                        {testLoading === w.id
-                          ? <RefreshCw className="h-4 w-4 animate-spin" />
-                          : <PlayCircle className="h-4 w-4" />
-                        }
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title={w.active ? "Nonaktifkan" : "Aktifkan"}
-                        onClick={() => toggleWebhook(w.id, !w.active)}
-                      >
-                        {w.active
-                          ? <ToggleRight className="h-4 w-4 text-green-500" />
-                          : <ToggleLeft className="h-4 w-4 text-muted-foreground" />
-                        }
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => deleteWebhook(w.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+            webhooks.map((w) => (
+              <div key={w.id} className="rounded-xl border border-border/60 bg-card overflow-hidden">
+                {/* Inline row */}
+                <div className="flex items-center h-11">
+                  {/* Label + status dot */}
+                  <div className="flex items-center gap-1.5 px-3 h-full bg-muted/50 border-r border-border/60 shrink-0">
+                    <Webhook className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Webhook</span>
+                    <div className={`h-1.5 w-1.5 rounded-full ${w.active ? "bg-green-500" : "bg-muted-foreground/50"}`} />
                   </div>
+                  {/* URL */}
+                  <div className="flex-1 min-w-0 px-3">
+                    <code className="text-sm font-mono font-medium text-foreground truncate block">{w.url}</code>
+                  </div>
+                  {/* Test */}
+                  <button
+                    onClick={() => testWebhook(w.id)}
+                    disabled={testLoading === w.id}
+                    className="px-2 h-full flex items-center text-muted-foreground hover:text-primary transition-colors shrink-0"
+                    title="Test webhook"
+                  >
+                    {testLoading === w.id
+                      ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      : <PlayCircle className="h-3.5 w-3.5" />
+                    }
+                  </button>
+                  {/* Toggle */}
+                  <button
+                    onClick={() => toggleWebhook(w.id, !w.active)}
+                    className="px-2 h-full flex items-center text-muted-foreground hover:text-primary transition-colors shrink-0"
+                    title={w.active ? "Nonaktifkan" : "Aktifkan"}
+                  >
+                    {w.active
+                      ? <ToggleRight className="h-4 w-4 text-green-500" />
+                      : <ToggleLeft className="h-4 w-4" />
+                    }
+                  </button>
+                  {/* Rotate Secret */}
+                  <button
+                    onClick={() => setConfirmRegen({ type: "secret", id: w.id })}
+                    className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0"
+                    title="Rotate signing secret"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Rotate Secret
+                  </button>
                 </div>
-              ))}
-            </div>
+                {/* Meta row */}
+                <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/40 bg-muted/20">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {w.events.map((ev) => (
+                      <Badge key={ev} variant="outline" className="text-[10px] px-1.5 py-0 h-4">{ev}</Badge>
+                    ))}
+                    {w.failCount > 0 && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{w.failCount} gagal</Badge>
+                    )}
+                    {w.lastTriggeredAt && (
+                      <span className="text-[11px] text-muted-foreground">Dipicu: {fmt(w.lastTriggeredAt)}</span>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteWebhook(w.id)}
+                    title="Hapus webhook"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))
           )}
 
           {/* Verifikasi Signature */}
