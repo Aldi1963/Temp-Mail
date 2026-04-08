@@ -4,6 +4,7 @@ export interface AuthUser {
   id: number;
   email: string;
   role: "user" | "admin";
+  emailVerified: boolean;
   createdAt: string;
 }
 

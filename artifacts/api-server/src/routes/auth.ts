@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, userTwoFactorTable, activityLogsTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { usersTable, userTwoFactorTable, activityLogsTable, emailVerificationTokensTable } from "@workspace/db";
+import { eq, count, and, gt, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
@@ -166,7 +166,73 @@ router.get("/me", requireAuth, async (req, res) => {
     return;
   }
   const user = results[0];
-  res.json({ id: user.id, email: user.email, role: user.role, createdAt: user.createdAt });
+  res.json({ id: user.id, email: user.email, role: user.role, emailVerified: user.emailVerified, createdAt: user.createdAt });
+});
+
+// ─── EMAIL VERIFICATION ───────────────────────────────────────────────────────
+
+router.post("/send-verification", requireAuth, async (req, res) => {
+  const userId = req.session.userId!;
+  const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const user = users[0];
+
+  if (user.emailVerified) {
+    res.status(400).json({ error: "Bad request", message: "Email sudah diverifikasi." });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await db.insert(emailVerificationTokensTable).values({ userId, token, expiresAt });
+
+  const base = process.env.APP_BASE_URL || "";
+  const verifyUrl = `${base}/verify-email?token=${token}`;
+
+  await logActivity(userId, "verification_sent", "Link verifikasi email dibuat");
+
+  res.json({ verifyUrl, message: "Link verifikasi berhasil dibuat." });
+});
+
+router.post("/verify-email", async (req, res) => {
+  const { token } = req.body ?? {};
+  if (!token) {
+    res.status(400).json({ error: "Bad request", message: "Token tidak valid." });
+    return;
+  }
+
+  const tokens = await db
+    .select()
+    .from(emailVerificationTokensTable)
+    .where(
+      and(
+        eq(emailVerificationTokensTable.token, token),
+        gt(emailVerificationTokensTable.expiresAt, new Date()),
+        isNull(emailVerificationTokensTable.usedAt)
+      )
+    )
+    .limit(1);
+
+  if (tokens.length === 0) {
+    res.status(400).json({ error: "Bad request", message: "Token tidak valid atau sudah kadaluarsa." });
+    return;
+  }
+
+  const vt = tokens[0];
+
+  await db
+    .update(usersTable)
+    .set({ emailVerified: true })
+    .where(eq(usersTable.id, vt.userId));
+
+  await db
+    .update(emailVerificationTokensTable)
+    .set({ usedAt: new Date() })
+    .where(eq(emailVerificationTokensTable.id, vt.id));
+
+  await logActivity(vt.userId, "email_verified", "Email akun berhasil diverifikasi");
+
+  res.json({ success: true, message: "Email berhasil diverifikasi!" });
 });
 
 // ─── 2FA ─────────────────────────────────────────────────────────────────────

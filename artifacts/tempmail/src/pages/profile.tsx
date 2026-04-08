@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import {
-  User, Lock, ShieldCheck, ChevronLeft, CheckCircle2, AlertTriangle, Copy, Eye, EyeOff
+  User, Lock, ShieldCheck, ChevronLeft, CheckCircle2, AlertTriangle, Copy, Eye, EyeOff,
+  MailCheck, MailWarning, ExternalLink
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -25,6 +26,112 @@ function CopyButton({ value }: { value: string }) {
     <button onClick={copy} className="text-muted-foreground hover:text-foreground transition-colors">
       {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
+  );
+}
+
+function EmailVerificationCard() {
+  const { user, refetch } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [verifyUrl, setVerifyUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+
+  if (!user) return null;
+
+  const handleSendVerification = async () => {
+    setLoading(true);
+    const r = await api("/auth/send-verification", { method: "POST" });
+    const data = await r.json();
+    setLoading(false);
+    if (!r.ok) {
+      toast({ title: "Gagal", description: data.message, variant: "destructive" });
+      return;
+    }
+    const fullUrl = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "") + data.verifyUrl;
+    setVerifyUrl(fullUrl);
+    toast({ title: "Link verifikasi dibuat!", description: "Klik link di bawah untuk memverifikasi email." });
+  };
+
+  const copyUrl = () => {
+    if (!verifyUrl) return;
+    navigator.clipboard.writeText(verifyUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (user.emailVerified) {
+    return (
+      <div className="rounded-xl border p-5 space-y-3 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MailCheck className="h-5 w-5 text-green-600" />
+            <h2 className="font-semibold text-lg">Verifikasi Email</h2>
+          </div>
+          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400 border-green-200 dark:border-green-800 text-xs">
+            <CheckCircle2 className="h-3 w-3 mr-1" /> Terverifikasi
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Email <strong>{user.email}</strong> sudah terverifikasi. Akun Anda mendapat akses penuh.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border p-5 space-y-4 border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <MailWarning className="h-5 w-5 text-orange-600" />
+          <h2 className="font-semibold text-lg">Verifikasi Email</h2>
+        </div>
+        <Badge variant="secondary" className="text-xs text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 border-orange-200">
+          Belum Diverifikasi
+        </Badge>
+      </div>
+
+      <div className="flex items-start gap-2 text-sm text-orange-700 dark:text-orange-300">
+        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+        <p>Email akun Anda belum diverifikasi. Klik tombol untuk mendapatkan link verifikasi.</p>
+      </div>
+
+      {!verifyUrl ? (
+        <Button
+          onClick={handleSendVerification}
+          disabled={loading}
+          className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+        >
+          <MailCheck className="h-4 w-4" />
+          {loading ? "Membuat link..." : "Dapatkan Link Verifikasi"}
+        </Button>
+      ) : (
+        <div className="space-y-3">
+          <div className="bg-background rounded-lg border border-border p-3 space-y-2">
+            <p className="text-xs text-muted-foreground font-medium">Link Verifikasi Anda:</p>
+            <div className="flex items-start gap-2">
+              <code className="text-xs break-all flex-1 text-primary font-mono leading-relaxed">{verifyUrl}</code>
+              <button onClick={copyUrl} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5">
+                {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <a href={verifyUrl} target="_self" className="flex-1">
+              <Button className="w-full gap-2">
+                <ExternalLink className="h-4 w-4" />
+                Klik untuk Verifikasi
+              </Button>
+            </a>
+            <Button variant="outline" onClick={() => setVerifyUrl(null)} className="shrink-0">
+              Reset
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Link berlaku selama 24 jam dan hanya dapat digunakan sekali.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -362,6 +469,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        <EmailVerificationCard />
         <ChangePasswordCard />
         <TwoFactorCard />
       </main>
