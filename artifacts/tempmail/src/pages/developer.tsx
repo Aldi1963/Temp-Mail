@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import {
   Key, Webhook, Plus, Trash2, Copy, CheckCircle2, XCircle, ToggleLeft, ToggleRight,
-  PlayCircle, Eye, EyeOff, ChevronLeft, RefreshCw, Code2
+  PlayCircle, Eye, EyeOff, ChevronLeft, RefreshCw, Code2, RotateCcw, AlertTriangle
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -32,6 +32,32 @@ interface Webhook {
   lastTriggeredAt: string | null;
   failCount: number;
   createdAt: string;
+}
+
+function ConfirmDialog({
+  open, title, description, confirmLabel, onConfirm, onCancel, loading,
+}: {
+  open: boolean; title: string; description: string; confirmLabel: string;
+  onConfirm: () => void; onCancel: () => void; loading?: boolean;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-background rounded-xl shadow-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-2">
+          <AlertTriangle className="h-5 w-5 text-amber-500" />
+          <h3 className="font-semibold text-lg">{title}</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-5">{description}</p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onCancel} disabled={loading}>Batal</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={loading}>
+            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -238,6 +264,8 @@ export default function DeveloperPage() {
   const [revealKey, setRevealKey] = useState<string | null>(null);
   const [revealSecret, setRevealSecret] = useState<string | null>(null);
   const [testLoading, setTestLoading] = useState<number | null>(null);
+  const [confirmRegen, setConfirmRegen] = useState<{ type: "key" | "secret"; id: number } | null>(null);
+  const [regenLoading, setRegenLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -291,6 +319,32 @@ export default function DeveloperPage() {
     }
   };
 
+  const handleRegen = async () => {
+    if (!confirmRegen) return;
+    setRegenLoading(true);
+    if (confirmRegen.type === "key") {
+      const r = await api(`/developer/keys/${confirmRegen.id}/regenerate`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) {
+        setConfirmRegen(null);
+        await load();
+        setRevealKey(data.key);
+      } else {
+        toast({ title: "Gagal regenerate", description: data.message, variant: "destructive" });
+      }
+    } else {
+      const r = await api(`/developer/webhooks/${confirmRegen.id}/rotate-secret`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) {
+        setConfirmRegen(null);
+        setRevealSecret(data.secret);
+      } else {
+        toast({ title: "Gagal rotate secret", description: data.message, variant: "destructive" });
+      }
+    }
+    setRegenLoading(false);
+  };
+
   const fmt = (date: string | null) => {
     if (!date) return "—";
     return new Date(date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
@@ -301,6 +355,20 @@ export default function DeveloperPage() {
       <Header />
       {revealKey && <RevealKeyModal rawKey={revealKey} onClose={() => { setRevealKey(null); load(); }} />}
       {revealSecret && <RevealSecretModal secret={revealSecret} onClose={() => { setRevealSecret(null); load(); }} />}
+
+      <ConfirmDialog
+        open={!!confirmRegen}
+        title={confirmRegen?.type === "key" ? "Regenerate API Key?" : "Rotate Webhook Secret?"}
+        description={
+          confirmRegen?.type === "key"
+            ? "API key lama akan langsung tidak berfungsi dan tidak bisa dikembalikan. Key baru akan ditampilkan setelah konfirmasi."
+            : "Signing secret lama akan langsung tidak berfungsi. Secret baru harus diupdate di semua integrasi yang menggunakan webhook ini."
+        }
+        confirmLabel={confirmRegen?.type === "key" ? "Ya, Regenerate" : "Ya, Rotate Secret"}
+        onConfirm={handleRegen}
+        onCancel={() => setConfirmRegen(null)}
+        loading={regenLoading}
+      />
 
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8 space-y-8 overflow-x-hidden">
         <div className="flex items-center gap-3">
@@ -372,6 +440,15 @@ export default function DeveloperPage() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                    title="Regenerate key baru"
+                    onClick={() => setConfirmRegen({ type: "key", id: k.id })}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive"
                     onClick={() => deleteKey(k.id)}
                   >
@@ -428,6 +505,15 @@ export default function DeveloperPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                        title="Rotate signing secret"
+                        onClick={() => setConfirmRegen({ type: "secret", id: w.id })}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

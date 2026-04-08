@@ -63,6 +63,43 @@ router.post("/keys", async (req, res) => {
   });
 });
 
+router.post("/keys/:id/regenerate", async (req, res) => {
+  const userId = req.session.userId!;
+  const id = parseInt(req.params.id, 10);
+  const { name } = req.body ?? {};
+
+  const existing = await db
+    .select()
+    .from(apiKeysTable)
+    .where(and(eq(apiKeysTable.id, id), eq(apiKeysTable.userId, userId)))
+    .limit(1);
+
+  if (existing.length === 0) {
+    res.status(404).json({ error: "Not found", message: "API key tidak ditemukan." });
+    return;
+  }
+
+  const keyName = name?.trim() || existing[0].name;
+  const rawKey = `tmk_${randomBytes(32).toString("hex")}`;
+  const keyPrefix = rawKey.substring(0, 12);
+  const keyHash = await bcrypt.hash(rawKey, 10);
+
+  await db.delete(apiKeysTable).where(eq(apiKeysTable.id, id));
+
+  const [created] = await db
+    .insert(apiKeysTable)
+    .values({ userId, name: keyName, keyPrefix, keyHash })
+    .returning();
+
+  res.json({
+    key: rawKey,
+    id: created.id,
+    name: created.name,
+    keyPrefix: created.keyPrefix,
+    createdAt: created.createdAt,
+  });
+});
+
 router.delete("/keys/:id", async (req, res) => {
   const userId = req.session.userId!;
   const id = parseInt(req.params.id, 10);
@@ -146,6 +183,31 @@ router.post("/webhooks", async (req, res) => {
     active: created.active,
     createdAt: created.createdAt,
   });
+});
+
+router.post("/webhooks/:id/rotate-secret", async (req, res) => {
+  const userId = req.session.userId!;
+  const id = parseInt(req.params.id, 10);
+
+  const hooks = await db
+    .select()
+    .from(webhooksTable)
+    .where(and(eq(webhooksTable.id, id), eq(webhooksTable.userId, userId)))
+    .limit(1);
+
+  if (hooks.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Webhook tidak ditemukan." });
+    return;
+  }
+
+  const newSecret = randomBytes(32).toString("hex");
+
+  await db
+    .update(webhooksTable)
+    .set({ secret: newSecret })
+    .where(eq(webhooksTable.id, id));
+
+  res.json({ success: true, secret: newSecret });
 });
 
 router.delete("/webhooks/:id", async (req, res) => {
