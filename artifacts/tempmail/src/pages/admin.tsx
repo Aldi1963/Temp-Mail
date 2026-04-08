@@ -677,7 +677,7 @@ export default function AdminPage() {
                       </div>
                     ))}
                   </div>
-                  <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
+                  <Button onClick={() => saveSettings()} disabled={saving} className="w-full gap-2">
                     <Save className="h-4 w-4" />
                     {saving ? "Menyimpan..." : "Simpan Perubahan"}
                   </Button>
