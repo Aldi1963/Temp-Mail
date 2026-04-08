@@ -890,16 +890,27 @@ export default function AdminPage() {
                           <div className="w-px flex-1 bg-border mt-1" />
                         </div>
                         <div className="flex-1 min-w-0 pt-0.5 pb-2">
-                          <p className="text-sm font-semibold mb-1.5">Tambahkan MX Record</p>
-                          <p className="text-xs text-muted-foreground mb-2">Di <strong>DNS</strong> → <strong>Records</strong>, tambahkan 3 record MX berikut:</p>
+                          <p className="text-sm font-semibold mb-1">MX Record (otomatis atau manual)</p>
+                          {/* Tip: otomatis */}
+                          <div className="flex items-start gap-2 p-2.5 bg-blue-500/5 border border-blue-500/20 rounded-lg mb-2.5">
+                            <Info className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                              <strong>Cara termudah:</strong> Aktifkan Email Routing dulu (Langkah 1) — Cloudflare akan <strong>otomatis menambah MX record</strong>. Tidak perlu tambah manual.
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">Jika ingin tambah manual: di <strong>DNS</strong> → <strong>Records</strong> → <strong>Add record</strong>, pilih type <strong>MX</strong> (bukan A/AAAA!):</p>
                           <div className="rounded-lg overflow-hidden border border-border text-xs">
+                            <div className="bg-amber-500/10 border-b border-amber-400/30 px-2.5 py-1.5 flex items-center gap-1.5">
+                              <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                              <span className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">Pastikan Type = <strong>MX</strong>, bukan A atau AAAA!</span>
+                            </div>
                             <table className="w-full">
                               <thead className="bg-muted">
                                 <tr className="text-[10px] text-muted-foreground font-medium">
                                   <th className="text-left px-2.5 py-1.5">TYPE</th>
                                   <th className="text-left px-2.5 py-1.5">NAME</th>
                                   <th className="text-left px-2.5 py-1.5">MAIL SERVER</th>
-                                  <th className="text-left px-2.5 py-1.5">PRIO</th>
+                                  <th className="text-left px-2.5 py-1.5">PRIORITY</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-border font-mono">
