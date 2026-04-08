@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link } from "wouter";
-import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, User, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle } from "lucide-react";
+import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle } from "lucide-react";
 import { useTheme } from "./theme-provider";
 import { useSound } from "@/hooks/use-sound";
 import { useAuth } from "@/hooks/use-auth";
@@ -44,8 +44,17 @@ export function Header({ rightSlot }: HeaderProps) {
           </div>
         </Link>
 
+        {/* Desktop nav links */}
+        <nav className="hidden md:flex items-center gap-1 ml-6">
+          <Link href="/tentang">
+            <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer">
+              Tentang
+            </span>
+          </Link>
+        </nav>
+
         {/* Right controls */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 ml-auto">
           {rightSlot}
 
           <div className="h-5 w-px bg-border/60 mx-1 hidden sm:block" />

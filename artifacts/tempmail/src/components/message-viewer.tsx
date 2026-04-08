@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert, Copy, Check } from "lucide-react";
+import { ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert, Copy, Check, FileImage, FileVideo, FileAudio, FileArchive, FileCode, File } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -106,6 +106,22 @@ function exportAsTxt(message: {
   a.download = `${message.subject.replace(/[^a-z0-9]/gi, "_").slice(0, 40)}.txt`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function getAttachmentIcon(contentType: string) {
+  if (contentType.startsWith("image/")) return FileImage;
+  if (contentType.startsWith("video/")) return FileVideo;
+  if (contentType.startsWith("audio/")) return FileAudio;
+  if (contentType.includes("zip") || contentType.includes("tar") || contentType.includes("rar") || contentType.includes("7z")) return FileArchive;
+  if (contentType.includes("pdf") || contentType.includes("text")) return FileText;
+  if (contentType.includes("html") || contentType.includes("javascript") || contentType.includes("json") || contentType.includes("xml")) return FileCode;
+  return File;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) {
@@ -331,14 +347,37 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
         </div>
 
         {message.attachments && message.attachments.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {message.attachments.map((att, i) => (
-              <Badge key={i} variant="secondary" className="flex items-center gap-1.5 py-1 px-2.5 text-xs">
-                <Paperclip className="h-3 w-3" />
-                <span className="max-w-[120px] truncate">{att.filename}</span>
-                <span className="opacity-60">({Math.round(att.size / 1024)}kb)</span>
-              </Badge>
-            ))}
+          <div className="mt-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">
+                {message.attachments.length} Lampiran
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {message.attachments.map((att, i) => {
+                const IconComponent = getAttachmentIcon(att.contentType);
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 group"
+                  >
+                    <div className="shrink-0 w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center">
+                      <IconComponent className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate leading-tight">{att.filename}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {formatFileSize(att.size)} · {att.contentType.split("/")[1]?.toUpperCase() || att.contentType}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2 italic">
+              Konten lampiran tidak tersedia untuk diunduh pada layanan ini.
+            </p>
           </div>
         )}
       </div>

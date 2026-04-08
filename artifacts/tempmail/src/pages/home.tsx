@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
+import { Inbox, Mail } from "lucide-react";
 import { Header } from "@/components/header";
 import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
@@ -30,6 +31,7 @@ export default function Home() {
   const [activeEmail, setActiveEmailRaw] = useLocalStorage<string | null>("tempmail_active_email", null);
   const [inboxList, setInboxList] = useLocalStorage<InboxEntry[]>("tempmail_inbox_list", []);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<"inbox" | "email">("inbox");
 
   const { playChime } = useSound();
   const { toast } = useToast();
@@ -157,6 +159,14 @@ export default function Home() {
     }), [handleRefreshInbox, activeEmail, toast])
   );
 
+  const handleSelectMessage = useCallback((id: string) => {
+    setSelectedMessageId(id);
+  }, []);
+
+  const handleBackFromMessage = useCallback(() => {
+    setSelectedMessageId(null);
+  }, []);
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
       {/* Subtle top gradient */}
@@ -179,7 +189,94 @@ export default function Home() {
         }
       />
 
-      <main className="relative z-10 flex-1 container max-w-7xl mx-auto p-4 md:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+      {/* ── MOBILE LAYOUT (< lg) ── */}
+      <div className="lg:hidden flex-1 flex flex-col relative">
+
+        {/* Mobile: message viewer — full-screen overlay when message selected */}
+        {selectedMessageId && (
+          <div className="absolute inset-0 z-20 bg-background flex flex-col pb-16">
+            <MessageViewer
+              messageId={selectedMessageId}
+              email={activeEmail!}
+              onBack={handleBackFromMessage}
+            />
+          </div>
+        )}
+
+        {/* Mobile: tab content area */}
+        <div className="flex-1 overflow-y-auto pb-20">
+          {mobileTab === "inbox" ? (
+            <div className="p-3 h-full min-h-[60vh]">
+              <InboxList
+                messages={inbox?.messages || []}
+                isLoading={isLoading && !!activeEmail}
+                selectedMessageId={selectedMessageId}
+                onSelectMessage={handleSelectMessage}
+                onRefresh={handleRefreshInbox}
+                onMarkAllRead={handleMarkAllRead}
+                notifPermission={notifPermission}
+                onRequestNotif={requestNotifPermission}
+              />
+            </div>
+          ) : (
+            <div className="p-3">
+              <EmailPane
+                activeEmail={activeEmail}
+                setActiveEmail={setActiveEmail}
+                hasPin={hasPin}
+                onSetupPin={setupPin}
+                onRemovePin={removePin}
+                onLock={lock}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Bottom Navigation */}
+        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90 safe-area-pb">
+          <div className="flex h-16">
+            <button
+              className={`flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors relative ${
+                mobileTab === "inbox"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setMobileTab("inbox")}
+            >
+              {mobileTab === "inbox" && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-10 rounded-full bg-primary" />
+              )}
+              <div className="relative">
+                <Inbox className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-2 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </div>
+              <span>Inbox</span>
+            </button>
+
+            <button
+              className={`flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors relative ${
+                mobileTab === "email"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setMobileTab("email")}
+            >
+              {mobileTab === "email" && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-10 rounded-full bg-primary" />
+              )}
+              <Mail className="h-5 w-5" />
+              <span>Alamat</span>
+            </button>
+          </div>
+        </nav>
+      </div>
+
+      {/* ── DESKTOP LAYOUT (≥ lg) ── */}
+      <main className="relative z-10 flex-1 container max-w-7xl mx-auto p-4 md:p-5 hidden lg:grid grid-cols-1 lg:grid-cols-12 gap-5">
 
         {/* Left: Address + Stats + Security */}
         <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-3">
@@ -254,10 +351,11 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="relative z-10 border-t border-border/60 py-4 px-6 mt-auto bg-background/80 backdrop-blur">
+      <footer className="relative z-10 border-t border-border/60 py-4 px-6 mt-auto bg-background/80 backdrop-blur hidden lg:block">
         <div className="container max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} TempMail — Layanan email sementara gratis.</span>
           <div className="flex items-center gap-4">
+            <Link href="/tentang" className="hover:text-foreground transition-colors">Tentang</Link>
             <Link href="/privacy" className="hover:text-foreground transition-colors">Kebijakan Privasi</Link>
             <Link href="/terms" className="hover:text-foreground transition-colors">Syarat Layanan</Link>
           </div>
