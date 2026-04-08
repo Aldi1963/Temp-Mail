@@ -273,7 +273,7 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex overflow-x-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden md:flex md:w-56 lg:w-60 shrink-0 flex-col fixed inset-y-0 left-0 z-40">
         <Sidebar />
@@ -711,7 +711,7 @@ export default function AdminPage() {
                     {/* Langkah 1 */}
                     <li className="flex gap-3">
                       <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">1</div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">Publish aplikasi di Replit</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Klik tombol <strong>Publish</strong> di Replit. Aplikasi akan tersedia di domain <code className="bg-muted px-1 rounded text-xs">*.replit.app</code>. Catat domain tersebut — kita butuh nanti.</p>
                       </div>
@@ -720,7 +720,7 @@ export default function AdminPage() {
                     {/* Langkah 2 */}
                     <li className="flex gap-3">
                       <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">2</div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">Daftarkan custom domain di Replit</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Buka halaman deployment → <strong>Custom Domain</strong> → masukkan domain Anda. Replit akan memberi DNS record yang harus dipasang.</p>
                       </div>
@@ -729,7 +729,7 @@ export default function AdminPage() {
                     {/* Langkah 3 */}
                     <li className="flex gap-3">
                       <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">3</div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">Tambahkan DNS Record di panel domain Anda</p>
                         <p className="text-xs text-muted-foreground mt-1 mb-2">Buka Cloudflare / Namecheap / panel DNS lainnya, lalu tambahkan record berikut:</p>
                         <div className="overflow-x-auto rounded-lg border border-border">
@@ -767,7 +767,7 @@ export default function AdminPage() {
                     {/* Langkah 4 */}
                     <li className="flex gap-3">
                       <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">4</div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">Tunggu propagasi DNS (5–60 menit)</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Setelah record disimpan, DNS perlu waktu untuk menyebar. Gunakan alat <strong>Tes DNS</strong> di bawah untuk memantau statusnya.</p>
                       </div>
@@ -776,7 +776,7 @@ export default function AdminPage() {
                     {/* Langkah 5 */}
                     <li className="flex gap-3">
                       <div className="flex-shrink-0 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center mt-0.5">5</div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">Verifikasi di Replit & tambah ke daftar domain</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Kembali ke Replit → klik <strong>Verify</strong>. Jika berhasil, tambahkan domain ke daftar di atas agar bisa digunakan untuk generate email.</p>
                       </div>
