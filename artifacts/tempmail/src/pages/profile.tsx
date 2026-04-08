@@ -318,7 +318,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-8 space-y-6">
+      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-8 space-y-6 overflow-x-hidden">
         <div className="flex items-center gap-3">
           <Link href="/dashboard">
             <Button variant="ghost" size="icon" className="h-8 w-8">

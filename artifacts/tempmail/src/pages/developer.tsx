@@ -302,7 +302,7 @@ export default function DeveloperPage() {
       {revealKey && <RevealKeyModal rawKey={revealKey} onClose={() => { setRevealKey(null); load(); }} />}
       {revealSecret && <RevealSecretModal secret={revealSecret} onClose={() => { setRevealSecret(null); load(); }} />}
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8 space-y-8">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8 space-y-8 overflow-x-hidden">
         <div className="flex items-center gap-3">
           <Link href="/dashboard">
             <Button variant="ghost" size="icon" className="h-8 w-8">

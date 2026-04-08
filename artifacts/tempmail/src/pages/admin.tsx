@@ -306,7 +306,7 @@ export default function AdminPage() {
           </Button>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto w-full space-y-6 pb-12">
+        <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto w-full space-y-6 pb-12 overflow-x-hidden">
 
           {/* ── OVERVIEW ── */}
           {active === "overview" && (
@@ -315,21 +315,21 @@ export default function AdminPage() {
                 <h1 className="text-xl font-bold">Ringkasan</h1>
                 <p className="text-sm text-muted-foreground mt-1">Gambaran umum kondisi sistem TempMail.</p>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 {[
                   { icon: Users, label: "Pengguna", value: stats?.totalUsers ?? 0, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/30" },
                   { icon: Mail, label: "Email Dibuat", value: stats?.totalEmails ?? 0, color: "text-primary", bg: "bg-primary/10" },
                   { icon: Inbox, label: "Pesan Masuk", value: stats?.totalMessages ?? 0, color: "text-green-600", bg: "bg-green-50 dark:bg-green-950/30" },
                 ].map((s) => (
                   <Card key={s.label} className="border-border/50">
-                    <CardContent className="p-4">
-                      <div className={`${s.bg} w-9 h-9 rounded-lg flex items-center justify-center mb-3`}>
-                        <s.icon className={`h-5 w-5 ${s.color}`} />
+                    <CardContent className="p-3 sm:p-4">
+                      <div className={`${s.bg} w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center mb-2 sm:mb-3`}>
+                        <s.icon className={`h-4 w-4 sm:h-5 sm:w-5 ${s.color}`} />
                       </div>
-                      {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
-                        <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                      {loading ? <Skeleton className="h-6 w-10 mb-1 sm:h-8 sm:w-16" /> : (
+                        <div className={`text-lg sm:text-2xl font-bold ${s.color}`}>{s.value}</div>
                       )}
-                      <div className="text-xs text-muted-foreground">{s.label}</div>
+                      <div className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{s.label}</div>
                     </CardContent>
                   </Card>
                 ))}
@@ -730,29 +730,30 @@ export default function AdminPage() {
                       <div>
                         <p className="text-sm font-medium">Tambahkan DNS Record di panel domain Anda</p>
                         <p className="text-xs text-muted-foreground mt-1 mb-2">Buka Cloudflare / Namecheap / panel DNS lainnya, lalu tambahkan record berikut:</p>
-                        {guideType === "subdomain" ? (
-                          <div className="bg-muted rounded-lg p-3 font-mono text-xs space-y-1 border border-border">
-                            <div className="grid grid-cols-3 gap-2 text-muted-foreground text-[10px] font-sans mb-1">
-                              <span>TYPE</span><span>NAME</span><span>VALUE</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <span className="text-blue-500 font-bold">CNAME</span>
-                              <span>mail</span>
-                              <span className="truncate">nama-project.username.replit.app</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-muted rounded-lg p-3 font-mono text-xs space-y-1 border border-border">
-                            <div className="grid grid-cols-3 gap-2 text-muted-foreground text-[10px] font-sans mb-1">
-                              <span>TYPE</span><span>NAME</span><span>VALUE</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <span className="text-green-500 font-bold">A</span>
-                              <span>@</span>
-                              <span>(IP dari Replit)</span>
-                            </div>
-                          </div>
-                        )}
+                        <div className="overflow-x-auto rounded-lg border border-border">
+                          <table className="w-full text-xs font-mono min-w-[260px] bg-muted">
+                            <thead>
+                              <tr className="text-[10px] text-muted-foreground font-sans border-b border-border">
+                                <th className="text-left px-3 py-2">TYPE</th><th className="text-left px-3 py-2">NAME</th><th className="text-left px-3 py-2">VALUE</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {guideType === "subdomain" ? (
+                                <tr>
+                                  <td className="px-3 py-2 text-blue-500 font-bold">CNAME</td>
+                                  <td className="px-3 py-2">mail</td>
+                                  <td className="px-3 py-2">nama-project.username.replit.app</td>
+                                </tr>
+                              ) : (
+                                <tr>
+                                  <td className="px-3 py-2 text-green-500 font-bold">A</td>
+                                  <td className="px-3 py-2">@</td>
+                                  <td className="px-3 py-2">(IP dari Replit)</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
                         {guideType === "subdomain" && (
                           <p className="text-xs text-muted-foreground mt-2">
                             <strong>Cloudflare:</strong> Pastikan ikon awan berwarna <strong>abu-abu</strong> (proxy OFF), bukan oranye. Proxy ON akan mencegah Replit menerbitkan SSL.
@@ -928,28 +929,25 @@ export default function AdminPage() {
                       Buka Cloudflare DNS untuk domain Anda, tambahkan record berikut agar email masuk ke Cloudflare:
                     </p>
                     <div className="pl-7">
-                      <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-1">
-                        <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground font-sans mb-1">
-                          <span>TYPE</span><span>NAME</span><span>VALUE</span><span>PRIORITY</span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2">
-                          <span className="text-blue-500 font-bold">MX</span>
-                          <span>@</span>
-                          <span>route1.mx.cloudflare.net</span>
-                          <span>10</span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2">
-                          <span className="text-blue-500 font-bold">MX</span>
-                          <span>@</span>
-                          <span>route2.mx.cloudflare.net</span>
-                          <span>20</span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2">
-                          <span className="text-blue-500 font-bold">MX</span>
-                          <span>@</span>
-                          <span>route3.mx.cloudflare.net</span>
-                          <span>30</span>
-                        </div>
+                      <div className="overflow-x-auto rounded-lg border border-border">
+                        <table className="w-full text-xs font-mono min-w-[300px] bg-muted">
+                          <thead>
+                            <tr className="text-[10px] text-muted-foreground font-sans border-b border-border">
+                              <th className="text-left px-3 py-2">TYPE</th><th className="text-left px-3 py-2">NAME</th>
+                              <th className="text-left px-3 py-2">VALUE</th><th className="text-left px-3 py-2">PRIO</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {[["route1.mx.cloudflare.net","10"],["route2.mx.cloudflare.net","20"],["route3.mx.cloudflare.net","30"]].map(([v,p]) => (
+                              <tr key={v}>
+                                <td className="px-3 py-1.5 text-blue-500 font-bold">MX</td>
+                                <td className="px-3 py-1.5">@</td>
+                                <td className="px-3 py-1.5">{v}</td>
+                                <td className="px-3 py-1.5">{p}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>
@@ -978,13 +976,13 @@ export default function AdminPage() {
                       <p className="text-xs text-muted-foreground">
                         Lalu di <strong>Settings → Variables</strong> tambahkan:
                       </p>
-                      <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-1">
-                        <div className="flex gap-4">
-                          <span className="text-purple-500 w-44 shrink-0">TEMPMAIL_WEBHOOK_URL</span>
-                          <span className="text-muted-foreground">https://yourapp.replit.app/api/webhook/inbound-email</span>
+                      <div className="bg-muted rounded-lg p-3 font-mono text-xs border border-border space-y-2 overflow-x-auto">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-purple-500">TEMPMAIL_WEBHOOK_URL</span>
+                          <span className="text-muted-foreground break-all">https://yourapp.replit.app/api/webhook/inbound-email</span>
                         </div>
-                        <div className="flex gap-4">
-                          <span className="text-purple-500 w-44 shrink-0">TEMPMAIL_WEBHOOK_SECRET</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-purple-500">TEMPMAIL_WEBHOOK_SECRET</span>
                           <span className="text-muted-foreground">(salin dari Langkah 1)</span>
                         </div>
                       </div>
@@ -1071,8 +1069,8 @@ export default function AdminPage() {
                                 onClick={() => handleRoleChange(u.id, u.role === "admin" ? "user" : "admin")}
                               >
                                 {u.role === "admin"
-                                  ? <><ShieldX className="h-3 w-3" />Turunkan</>
-                                  : <><ShieldCheck className="h-3 w-3" />Jadikan Admin</>}
+                                  ? <><ShieldX className="h-3 w-3" /><span className="hidden sm:inline">Turunkan</span></>
+                                  : <><ShieldCheck className="h-3 w-3" /><span className="hidden sm:inline">Admin</span></>}
                               </Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -1146,9 +1144,9 @@ export default function AdminPage() {
                     { label: "Registrasi", value: settings?.allow_registration === "true" ? "Dibuka" : "Ditutup" },
                     { label: "Mode Pemeliharaan", value: settings?.maintenance_mode === "true" ? "Aktif" : "Nonaktif" },
                   ].map((r) => (
-                    <div key={r.label} className="flex justify-between text-sm border-b border-border/50 pb-2 last:border-0">
-                      <span className="text-muted-foreground">{r.label}</span>
-                      <span className="font-medium text-right max-w-xs truncate">{r.value}</span>
+                    <div key={r.label} className="flex justify-between gap-4 text-sm border-b border-border/50 pb-2 last:border-0">
+                      <span className="text-muted-foreground shrink-0">{r.label}</span>
+                      <span className="font-medium text-right min-w-0 truncate">{r.value}</span>
                     </div>
                   ))}
                 </CardContent>

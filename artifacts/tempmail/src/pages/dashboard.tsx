@@ -211,7 +211,7 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-8 space-y-6 max-w-3xl">
+        <main className="flex-1 p-4 md:p-8 space-y-6 max-w-3xl overflow-x-hidden">
           <div>
             <h1 className="text-2xl font-bold">Dashboard Saya</h1>
             <p className="text-muted-foreground text-sm mt-1">
