@@ -32,7 +32,6 @@ export default function Home() {
   const [activeEmail, setActiveEmailRaw] = useLocalStorage<string | null>("tempmail_active_email", null);
   const [inboxList, setInboxList] = useLocalStorage<InboxEntry[]>("tempmail_inbox_list", []);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  const [mobileTab, setMobileTab] = useState<"inbox" | "email">("inbox");
   const { user } = useAuth();
   const [, navigate] = useLocation();
 
@@ -197,7 +196,7 @@ export default function Home() {
 
         {/* Mobile: message viewer — full-screen overlay when message selected */}
         {selectedMessageId && (
-          <div className="absolute inset-0 z-20 bg-background flex flex-col pb-16">
+          <div className="fixed inset-0 z-40 bg-background flex flex-col" style={{ top: 56 }}>
             <MessageViewer
               messageId={selectedMessageId}
               email={activeEmail!}
@@ -206,99 +205,88 @@ export default function Home() {
           </div>
         )}
 
-        {/* Mobile: tab content area */}
-        <div className="flex-1 overflow-y-auto pb-20">
-          {mobileTab === "inbox" ? (
-            <div className="p-3 h-full min-h-[60vh]">
-              <InboxList
-                messages={inbox?.messages || []}
-                isLoading={isLoading && !!activeEmail}
-                selectedMessageId={selectedMessageId}
-                onSelectMessage={handleSelectMessage}
-                onRefresh={handleRefreshInbox}
-                onMarkAllRead={handleMarkAllRead}
-                notifPermission={notifPermission}
-                onRequestNotif={requestNotifPermission}
-              />
+        {/* Mobile: single scrollable page — email pane + inbox stacked */}
+        <div className="flex-1 overflow-y-auto pb-16">
+          {/* Email / Generate section */}
+          <div className="p-3 pb-0" id="section-email">
+            <EmailPane
+              activeEmail={activeEmail}
+              setActiveEmail={setActiveEmail}
+              hasPin={hasPin}
+              onSetupPin={setupPin}
+              onRemovePin={removePin}
+              onLock={lock}
+            />
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 px-4 py-3 mt-1">
+            <div className="flex-1 h-px bg-border/60" />
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+              <Inbox className="h-3.5 w-3.5" />
+              Inbox
+              {unreadCount > 0 && (
+                <span className="ml-0.5 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
             </div>
-          ) : (
-            <div className="p-3">
-              <EmailPane
-                activeEmail={activeEmail}
-                setActiveEmail={setActiveEmail}
-                hasPin={hasPin}
-                onSetupPin={setupPin}
-                onRemovePin={removePin}
-                onLock={lock}
-              />
-            </div>
-          )}
+            <div className="flex-1 h-px bg-border/60" />
+          </div>
+
+          {/* Inbox list */}
+          <div className="px-3 pb-3" id="section-inbox">
+            <InboxList
+              messages={inbox?.messages || []}
+              isLoading={isLoading && !!activeEmail}
+              selectedMessageId={selectedMessageId}
+              onSelectMessage={handleSelectMessage}
+              onRefresh={handleRefreshInbox}
+              onMarkAllRead={handleMarkAllRead}
+              notifPermission={notifPermission}
+              onRequestNotif={requestNotifPermission}
+            />
+          </div>
         </div>
 
-        {/* Mobile Bottom Navigation */}
-        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
-          <div className="flex h-16">
-
-            {/* Tab: Inbox */}
-            <button
-              className={`flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors relative ${
-                mobileTab === "inbox" ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setMobileTab("inbox")}
-            >
-              {mobileTab === "inbox" && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-10 rounded-full bg-primary" />
-              )}
-              <div className="relative">
-                <Inbox className="h-5 w-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
+        {/* Mobile Bottom Bar — account only */}
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur">
+          <div className="flex items-center justify-between px-4 h-14">
+            {/* Brand */}
+            <div className="flex items-center gap-2">
+              <div className="bg-primary/10 p-1 rounded-md text-primary border border-primary/20">
+                <Mail className="h-3.5 w-3.5" />
               </div>
-              <span>Inbox</span>
-            </button>
-
-            {/* Tab: Alamat */}
-            <button
-              className={`flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors relative ${
-                mobileTab === "email" ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setMobileTab("email")}
-            >
-              {mobileTab === "email" && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-10 rounded-full bg-primary" />
+              <span className="text-xs font-semibold">TempMail</span>
+              {unreadCount > 0 && (
+                <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
               )}
-              <Mail className="h-5 w-5" />
-              <span>Alamat</span>
-            </button>
+            </div>
 
-            {/* Tab: Akun / Masuk */}
+            {/* Account button */}
             {user ? (
               <button
-                className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors relative"
+                className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors bg-muted/50 hover:bg-muted rounded-full px-3 py-1.5 border border-border"
                 onClick={() => navigate("/dashboard")}
               >
-                <div className="h-5 w-5 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary text-[10px] font-bold">
+                <div className="h-5 w-5 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
                   {user.email.substring(0, 1).toUpperCase()}
                 </div>
-                <span className="truncate max-w-[56px]">{user.email.split("@")[0].slice(0, 8)}</span>
+                <span className="max-w-[80px] truncate">{user.email.split("@")[0]}</span>
               </button>
             ) : (
               <button
-                className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary transition-colors relative"
+                className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full px-4 py-1.5 hover:bg-primary/90 transition-colors"
                 onClick={() => navigate("/login")}
               >
-                <div className="h-5 w-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
-                  <LogIn className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <span>Masuk</span>
+                <LogIn className="h-3.5 w-3.5" />
+                Masuk
               </button>
             )}
-
           </div>
-        </nav>
+        </div>
       </div>
 
       {/* ── DESKTOP LAYOUT (≥ lg) ── */}
