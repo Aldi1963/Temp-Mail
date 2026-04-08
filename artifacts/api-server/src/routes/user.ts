@@ -2,11 +2,11 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { emailAddressesTable, messagesTable } from "@workspace/db";
 import { eq, desc, count } from "drizzle-orm";
-import { requireAuth } from "../lib/auth.js";
+import { requireAuthOrApiKey } from "../lib/auth.js";
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuthOrApiKey);
 
 router.get("/emails", async (req, res) => {
   const userId = req.session.userId!;
