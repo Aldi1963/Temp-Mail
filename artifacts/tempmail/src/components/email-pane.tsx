@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import {
   Copy, RefreshCw, Trash2, Clock, Inbox, ChevronDown, Mail,
-  Timer, Pencil, Check, X, Lock, Unlock, Shield, ShieldOff, KeyRound, Minus, QrCode
+  Timer, Pencil, Check, X, Lock, Unlock, Shield, ShieldOff, KeyRound, Minus, QrCode,
+  Zap, ArrowRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
@@ -77,6 +77,7 @@ export function EmailPane({
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
   const [qrOpen, setQrOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // PIN dialog state
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
@@ -177,7 +178,9 @@ export function EmailPane({
   const copyToClipboard = () => {
     if (!activeEmail) return;
     navigator.clipboard.writeText(activeEmail);
+    setCopied(true);
     toast({ title: "Disalin!", description: "Alamat email berhasil disalin.", duration: 2000 });
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleReset = () => {
@@ -256,55 +259,68 @@ export function EmailPane({
   };
 
   const blockedList = blacklistData?.blocked ?? [];
+  const isExpired = stats?.isExpired;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Address Card */}
-      <Card className="border-primary/20 bg-card/50 backdrop-blur">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Alamat Sementara Anda
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Email display */}
-          <div className="relative group">
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/40 to-primary/20 rounded-lg blur opacity-20 group-hover:opacity-40 transition duration-500" />
-            <div className="relative flex items-center justify-between bg-background border border-border/50 rounded-lg px-3 py-2.5">
-              {activeEmail ? (
-                <span className="text-base sm:text-lg font-mono font-bold truncate select-all text-primary" data-testid="text-active-email">
-                  {activeEmail}
-                </span>
-              ) : (
-                <Skeleton className="h-7 w-full max-w-[220px]" />
-              )}
-              <div className="flex items-center gap-1 ml-2 shrink-0">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={copyToClipboard}
-                  disabled={!activeEmail}
-                  className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
-                  data-testid="button-copy-email"
-                  title="Salin alamat email (Ctrl+Shift+C)"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setQrOpen(true)}
-                  disabled={!activeEmail}
-                  className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
-                  title="Tampilkan QR Code"
-                >
-                  <QrCode className="h-4 w-4" />
-                </Button>
-              </div>
+    <div className="flex flex-col gap-3">
+
+      {/* ── Hero Email Card ── */}
+      <div className="relative rounded-2xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background shadow-sm">
+        {/* Decorative glow */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative p-5 space-y-4">
+          {/* Label */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">
+                Inbox Aktif
+              </span>
             </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setQrOpen(true)}
+              disabled={!activeEmail}
+              className="h-7 w-7 hover:bg-primary/10 hover:text-primary"
+              title="QR Code"
+            >
+              <QrCode className="h-3.5 w-3.5" />
+            </Button>
           </div>
 
-          {/* Custom username input */}
+          {/* Email address — hero display */}
+          <div className="space-y-2">
+            {activeEmail ? (
+              <div
+                className="font-mono font-bold text-lg sm:text-xl leading-tight break-all text-foreground cursor-pointer select-all"
+                data-testid="text-active-email"
+                onClick={copyToClipboard}
+                title="Klik untuk menyalin"
+              >
+                <span className="text-primary">{activeEmail.split("@")[0]}</span>
+                <span className="text-muted-foreground/70 text-base">@{activeEmail.split("@")[1]}</span>
+              </div>
+            ) : (
+              <Skeleton className="h-8 w-full" />
+            )}
+          </div>
+
+          {/* Copy button — prominent */}
+          <Button
+            onClick={copyToClipboard}
+            disabled={!activeEmail}
+            variant={copied ? "default" : "outline"}
+            className={`w-full h-9 gap-2 text-sm font-medium transition-all ${copied ? "bg-green-500 hover:bg-green-500 border-green-500 text-white" : "border-primary/30 hover:bg-primary/10 hover:text-primary hover:border-primary"}`}
+            data-testid="button-copy-email"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Tersalin!" : "Salin Alamat Email"}
+          </Button>
+
+          {/* Custom username */}
           {editingUsername ? (
             <div className="flex gap-2">
               <div className="flex-1 flex items-center border border-primary/40 rounded-lg overflow-hidden bg-background focus-within:ring-1 focus-within:ring-primary">
@@ -317,48 +333,46 @@ export function EmailPane({
                     if (e.key === "Escape") setEditingUsername(false);
                   }}
                   placeholder="username-kustom"
-                  className="border-0 focus-visible:ring-0 h-9 text-sm font-mono"
+                  className="border-0 focus-visible:ring-0 h-8 text-sm font-mono"
                 />
-                <span className="text-xs text-muted-foreground pr-2 whitespace-nowrap">
+                <span className="text-[11px] text-muted-foreground pr-2 whitespace-nowrap">
                   @{selectedDomain || (domains[0] ?? "domain")}
                 </span>
               </div>
-              <Button size="icon" className="h-9 w-9 shrink-0" onClick={handleCustomUsername}>
-                <Check className="h-4 w-4" />
+              <Button size="icon" className="h-8 w-8 shrink-0" onClick={handleCustomUsername}>
+                <Check className="h-3.5 w-3.5" />
               </Button>
-              <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={() => { setEditingUsername(false); setUsernameInput(""); }}>
-                <X className="h-4 w-4" />
+              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => { setEditingUsername(false); setUsernameInput(""); }}>
+                <X className="h-3.5 w-3.5" />
               </Button>
             </div>
           ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full text-xs text-muted-foreground hover:text-primary h-7 gap-1.5"
+            <button
               onClick={() => setEditingUsername(true)}
+              className="w-full flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors py-0.5"
             >
               <Pencil className="h-3 w-3" />
               Buat username kustom
-            </Button>
+            </button>
           )}
 
           {/* Generate + Domain */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2">
             <Button
               onClick={() => handleGenerate()}
               disabled={isGenerating}
-              className="flex-1 min-w-[120px] bg-primary text-primary-foreground hover:bg-primary/90 h-9"
+              className="flex-1 h-9 gap-2 bg-primary hover:bg-primary/90 text-sm"
               data-testid="button-generate-email"
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${isGenerating ? "animate-spin" : ""}`} />
+              <Zap className={`h-4 w-4 ${isGenerating ? "animate-spin" : ""}`} />
               Generate Baru
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="flex-1 min-w-[100px] h-9 text-xs" disabled={domains.length === 0}>
+                <Button variant="outline" className="h-9 px-3 text-xs gap-1 shrink-0" disabled={domains.length === 0}>
                   @{selectedDomain || (domains.length > 0 ? domains[0] : "domain")}
-                  <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
+                  <ChevronDown className="h-3 w-3 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[180px]">
@@ -375,196 +389,168 @@ export function EmailPane({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Stats Card */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="flex flex-col items-center justify-center p-3 rounded-lg bg-accent/50">
-              <Inbox className="h-5 w-5 text-muted-foreground mb-1.5" />
-              <div className="text-2xl font-bold" data-testid="text-stats-total">
-                {stats?.totalMessages ?? "0"}
-              </div>
-              <div className="text-xs text-muted-foreground">Total</div>
-            </div>
-            <div className="flex flex-col items-center justify-center p-3 rounded-lg bg-primary/10 border border-primary/20">
-              <Mail className="h-5 w-5 text-primary mb-1.5" />
-              <div className="text-2xl font-bold text-primary" data-testid="text-stats-unread">
-                {stats?.unreadCount ?? "0"}
-              </div>
-              <div className="text-xs text-primary/80 font-medium">Belum Dibaca</div>
+      {/* ── Stats + Timer Row ── */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl border border-border/50 bg-card p-3 flex flex-col items-center gap-1">
+          <Inbox className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xl font-bold" data-testid="text-stats-total">
+            {stats?.totalMessages ?? "0"}
+          </span>
+          <span className="text-[10px] text-muted-foreground">Total</span>
+        </div>
+
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex flex-col items-center gap-1">
+          <Mail className="h-4 w-4 text-primary" />
+          <span className="text-xl font-bold text-primary" data-testid="text-stats-unread">
+            {stats?.unreadCount ?? "0"}
+          </span>
+          <span className="text-[10px] text-primary/70 font-medium">Baru</span>
+        </div>
+
+        <div className={`rounded-xl border p-3 flex flex-col items-center gap-1 ${isExpired ? "border-destructive/30 bg-destructive/5" : "border-border/50 bg-card"}`}>
+          <Clock className={`h-4 w-4 ${isExpired ? "text-destructive" : "text-muted-foreground"}`} />
+          <span className={`text-sm font-bold font-mono tabular-nums ${isExpired ? "text-destructive" : "text-foreground"}`}>
+            {timeLeft}
+          </span>
+          <span className="text-[10px] text-muted-foreground">Sisa Waktu</span>
+        </div>
+      </div>
+
+      {/* ── Quick Actions ── */}
+      <div className="flex gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 gap-1.5 h-8 text-xs hover:border-primary hover:text-primary"
+              disabled={!activeEmail || extendMutation.isPending}
+            >
+              <Timer className="h-3.5 w-3.5" />
+              Perpanjang
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-36">
+            {[10, 30, 60].map((min) => (
+              <DropdownMenuItem key={min} className="text-xs cursor-pointer" onClick={() => handleExtend(min)}>
+                +{min} menit
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 gap-1.5 h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              disabled={!activeEmail || !stats?.totalMessages}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Kosongkan
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Yakin ingin mengosongkan?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Semua pesan di inbox ini akan dihapus permanen dan tidak bisa dikembalikan.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Batal</AlertDialogCancel>
+              <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Hapus Semua
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+
+      {/* ── Security Card ── */}
+      <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Keamanan & Privasi</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <KeyRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-xs font-medium">PIN Proteksi</p>
+              <p className="text-[10px] text-muted-foreground">
+                {hasPin ? "Inbox dilindungi" : "Belum diaktifkan"}
+              </p>
             </div>
           </div>
-
-          {/* Timer & Extend */}
-          <div className="flex items-center justify-between border-t border-border pt-3 mb-3">
-            <div className="flex items-center gap-1.5 text-sm">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className={`font-mono font-medium tabular-nums ${stats?.isExpired ? "text-destructive" : "text-foreground"}`}>
-                {timeLeft}
-              </span>
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 h-7 text-xs hover:border-primary hover:text-primary"
-                  disabled={!activeEmail || extendMutation.isPending}
-                >
-                  <Timer className="h-3.5 w-3.5" />
-                  Perpanjang
+          <div className="flex items-center gap-1">
+            {hasPin ? (
+              <>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" title="Kunci" onClick={onLock}>
+                  <Lock className="h-3.5 w-3.5" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                {[10, 30, 60].map((min) => (
-                  <DropdownMenuItem key={min} className="text-xs cursor-pointer" onClick={() => handleExtend(min)}>
-                    +{min} menit
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Clear inbox */}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 h-8 text-xs"
-                disabled={!activeEmail || !stats?.totalMessages}
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Kosongkan Inbox
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Hapus PIN">
+                      <ShieldOff className="h-3.5 w-3.5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Hapus proteksi PIN?</AlertDialogTitle>
+                      <AlertDialogDescription>Inbox tidak lagi terlindungi setelah ini.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Batal</AlertDialogCancel>
+                      <AlertDialogAction onClick={onRemovePin} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Hapus PIN</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-dashed" onClick={openPinDialog}>
+                <Unlock className="h-3 w-3" />
+                Aktifkan
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Yakin ingin mengosongkan?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Semua pesan di inbox ini akan dihapus permanen dan tidak bisa dikembalikan.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Batal</AlertDialogCancel>
-                <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Hapus Semua
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
-
-      {/* Security Card */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
-        <CardHeader className="pb-2 pt-3 px-4">
-          <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <Shield className="h-3.5 w-3.5" />
-            Keamanan & Privasi
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4 space-y-3">
-          {/* PIN Lock */}
-          <div className="flex items-center justify-between py-1">
-            <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs font-medium">PIN Proteksi</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {hasPin ? "Inbox terlindungi dengan PIN" : "Tambah PIN untuk keamanan"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {hasPin && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-primary"
-                    title="Kunci sekarang"
-                    onClick={onLock}
-                  >
-                    <Lock className="h-3.5 w-3.5" />
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Hapus PIN"
-                      >
-                        <ShieldOff className="h-3.5 w-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Hapus proteksi PIN?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Inbox Anda tidak akan lagi terlindungi dengan PIN setelah ini.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Batal</AlertDialogCancel>
-                        <AlertDialogAction onClick={onRemovePin} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                          Hapus PIN
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </>
-              )}
-              {!hasPin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={openPinDialog}
-                >
-                  <Unlock className="h-3 w-3" />
-                  Aktifkan
-                </Button>
-              )}
-            </div>
+            )}
           </div>
+        </div>
 
-          {/* Blocked Senders */}
-          {blockedList.length > 0 && (
-            <>
-              <Separator />
-              <div>
-                <p className="text-xs font-medium mb-2 flex items-center gap-1.5">
-                  <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
-                  Daftar Blokir
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{blockedList.length}</Badge>
-                </p>
-                <div className="space-y-1">
-                  {blockedList.map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between py-1 px-2 rounded-md bg-muted/30 group">
-                      <span className="text-xs font-mono text-foreground/80 truncate flex-1">{entry.pattern}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
-                        onClick={() => handleRemoveBlocked(entry.pattern)}
-                        disabled={removeFromBlacklistMutation.isPending}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+        {blockedList.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <p className="text-[11px] font-medium mb-2 flex items-center gap-1.5 text-muted-foreground">
+                <ShieldOff className="h-3 w-3" />
+                Daftar Blokir
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{blockedList.length}</Badge>
+              </p>
+              <div className="space-y-1">
+                {blockedList.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between py-1 px-2 rounded-md bg-muted/30 group">
+                    <span className="text-xs font-mono text-foreground/80 truncate flex-1">{entry.pattern}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => handleRemoveBlocked(entry.pattern)}
+                      disabled={removeFromBlacklistMutation.isPending}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* QR Code Dialog */}
       <Dialog open={qrOpen} onOpenChange={setQrOpen}>
@@ -592,21 +578,18 @@ export function EmailPane({
             <p className="text-xs font-mono text-center text-muted-foreground break-all px-2">
               {activeEmail}
             </p>
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={() => { copyToClipboard(); setQrOpen(false); }}
-            >
-              <Copy className="h-3.5 w-3.5" />
-              Salin Alamat
-            </Button>
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQrOpen(false)} className="w-full">
+              Tutup
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* PIN Setup Dialog */}
-      <Dialog open={pinDialogOpen} onOpenChange={(open) => { setPinDialogOpen(open); if (!open) { setPinInput(""); setPinConfirm(""); setPinStep("enter"); } }}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
+        <DialogContent className="max-w-xs">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-primary" />
@@ -614,35 +597,35 @@ export function EmailPane({
             </DialogTitle>
             <DialogDescription>
               {pinStep === "enter"
-                ? "Masukkan 4 digit angka sebagai PIN untuk melindungi inbox."
-                : "Ulangi PIN yang sama untuk konfirmasi."}
+                ? "Masukkan 4 digit PIN untuk melindungi inbox Anda."
+                : "Masukkan ulang PIN untuk konfirmasi."}
             </DialogDescription>
           </DialogHeader>
-
           <div className="py-2">
             <Input
               type="password"
               inputMode="numeric"
+              pattern="[0-9]*"
               maxLength={4}
               placeholder="••••"
+              className="text-center text-2xl tracking-widest font-mono h-14"
               value={pinStep === "enter" ? pinInput : pinConfirm}
               onChange={(e) => {
                 const val = e.target.value.replace(/\D/g, "").slice(0, 4);
                 if (pinStep === "enter") setPinInput(val);
                 else setPinConfirm(val);
               }}
-              className="text-center text-2xl tracking-[0.5em] h-12 font-mono"
-              onKeyDown={(e) => { if (e.key === "Enter") handlePinSetup(); }}
-              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handlePinSetup()}
             />
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setPinDialogOpen(false); setPinInput(""); setPinConfirm(""); setPinStep("enter"); }}>
-              Batal
-            </Button>
-            <Button onClick={handlePinSetup} disabled={(pinStep === "enter" ? pinInput : pinConfirm).length !== 4}>
-              {pinStep === "enter" ? "Lanjut" : "Simpan PIN"}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPinDialogOpen(false)}>Batal</Button>
+            <Button onClick={handlePinSetup} className="flex-1">
+              {pinStep === "enter" ? (
+                <>Lanjut <ArrowRight className="ml-1 h-4 w-4" /></>
+              ) : (
+                <>Simpan PIN <Check className="ml-1 h-4 w-4" /></>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

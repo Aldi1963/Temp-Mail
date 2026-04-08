@@ -159,6 +159,9 @@ export default function Home() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
+      {/* Subtle top gradient */}
+      <div className="fixed inset-x-0 top-0 h-64 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none z-0" />
+
       {/* PIN Lock Screen */}
       {hasPin && !isUnlocked && (
         <PinLock onVerify={verifyPin} />
@@ -176,10 +179,10 @@ export default function Home() {
         }
       />
 
-      <main className="flex-1 container max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <main className="relative z-10 flex-1 container max-w-7xl mx-auto p-4 md:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
 
         {/* Left: Address + Stats + Security */}
-        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
+        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-3">
           <EmailPane
             activeEmail={activeEmail}
             setActiveEmail={setActiveEmail}
@@ -191,9 +194,9 @@ export default function Home() {
         </div>
 
         {/* Right: Inbox list + Viewer */}
-        <div className="lg:col-span-8 xl:col-span-9 flex flex-col lg:flex-row gap-6 min-h-[500px]">
+        <div className="lg:col-span-8 xl:col-span-9 flex flex-col lg:flex-row gap-4 min-h-[500px]">
 
-          <div className={`w-full lg:w-[350px] xl:w-[400px] flex-shrink-0 flex flex-col ${selectedMessageId ? "hidden lg:flex" : "flex"}`}>
+          <div className={`w-full lg:w-[340px] xl:w-[380px] flex-shrink-0 flex flex-col ${selectedMessageId ? "hidden lg:flex" : "flex"}`}>
             <InboxList
               messages={inbox?.messages || []}
               isLoading={isLoading && !!activeEmail}
@@ -214,26 +217,35 @@ export default function Home() {
                 onBack={() => setSelectedMessageId(null)}
               />
             ) : (
-              <div className="hidden lg:flex flex-col items-center justify-center h-full bg-card/50 rounded-lg border border-border/50 text-center p-8">
-                <div className="bg-muted p-6 rounded-full mb-6">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                    <rect width="20" height="16" x="2" y="4" rx="2" />
-                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                  </svg>
+              <div className="hidden lg:flex flex-col items-center justify-center h-full rounded-2xl border border-dashed border-border/60 bg-card/30 text-center p-10 gap-5">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-primary/10 rounded-full blur-xl" />
+                  <div className="relative bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 p-5 rounded-2xl">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+                      <rect width="20" height="16" x="2" y="4" rx="2" />
+                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                    </svg>
+                  </div>
                 </div>
-                <h3 className="text-xl font-semibold text-foreground">Belum ada pesan dipilih</h3>
-                <p className="text-muted-foreground mt-2 max-w-sm text-sm">
-                  Pilih pesan dari daftar untuk membacanya. Email sementara Anda aktif dan siap menerima pesan.
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-3 text-xs text-muted-foreground">
-                  <kbd className="px-2 py-1 rounded bg-muted border border-border font-mono">R</kbd>
-                  <span>Refresh inbox</span>
-                  <span className="mx-2">·</span>
-                  <kbd className="px-2 py-1 rounded bg-muted border border-border font-mono">Ctrl+Shift+C</kbd>
-                  <span>Salin email</span>
-                  <span className="mx-2">·</span>
-                  <kbd className="px-2 py-1 rounded bg-muted border border-border font-mono">Esc</kbd>
-                  <span>Tutup pesan</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Pilih pesan untuk dibaca</h3>
+                  <p className="text-muted-foreground mt-1 text-sm max-w-xs">
+                    Inbox aktif dan siap menerima email. Pesan masuk akan muncul otomatis di sisi kiri.
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground pt-1 border-t border-border/40 w-full max-w-sm">
+                  <span className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">R</kbd>
+                    Refresh
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">Ctrl+Shift+C</kbd>
+                    Salin email
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px]">Esc</kbd>
+                    Tutup pesan
+                  </span>
                 </div>
               </div>
             )}
@@ -242,9 +254,9 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="border-t border-border py-4 px-6 mt-auto">
+      <footer className="relative z-10 border-t border-border/60 py-4 px-6 mt-auto bg-background/80 backdrop-blur">
         <div className="container max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>© {new Date().getFullYear()} TempMail. Layanan email sementara gratis.</span>
+          <span>© {new Date().getFullYear()} TempMail — Layanan email sementara gratis.</span>
           <div className="flex items-center gap-4">
             <Link href="/privacy" className="hover:text-foreground transition-colors">Kebijakan Privasi</Link>
             <Link href="/terms" className="hover:text-foreground transition-colors">Syarat Layanan</Link>
