@@ -11,6 +11,22 @@ declare module "express-session" {
   }
 }
 
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      /** Set when caller authenticated via X-API-Key. Per-request only — NOT stored in session. */
+      apiKeyUserId?: number;
+    }
+  }
+}
+
+/** Read a header that Express may surface as string | string[]; reject anything else. */
+function readSingleHeader(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  return null;
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session?.userId) {
     res.status(401).json({ error: "Unauthorized", message: "Silakan login terlebih dahulu." });
@@ -40,30 +56,99 @@ export async function getCurrentUser(req: Request) {
   return results[0] ?? null;
 }
 
-export async function requireAuthOrApiKey(req: Request, res: Response, next: NextFunction) {
-  if (req.session?.userId) return next();
-
-  const apiKey = req.headers["x-api-key"] as string | undefined;
-  if (!apiKey || !apiKey.startsWith("tmk_")) {
-    res.status(401).json({ error: "Unauthorized", message: "Silakan login atau sertakan X-API-Key." });
-    return;
-  }
-
+async function validateApiKey(apiKey: string): Promise<number | null> {
+  if (!apiKey.startsWith("tmk_") || apiKey.length < 16 || apiKey.length > 128) return null;
   const prefix = apiKey.substring(0, 12);
   const candidates = await db
     .select()
     .from(apiKeysTable)
     .where(eq(apiKeysTable.keyPrefix, prefix));
-
   for (const key of candidates) {
     if (key.expiresAt && key.expiresAt < new Date()) continue;
     const match = await bcrypt.compare(apiKey, key.keyHash);
     if (match) {
-      req.session.userId = key.userId;
       await db.update(apiKeysTable).set({ lastUsedAt: new Date() }).where(eq(apiKeysTable.id, key.id));
-      return next();
+      return key.userId;
     }
   }
+  return null;
+}
 
-  res.status(401).json({ error: "Unauthorized", message: "API key tidak valid." });
+/** Pull X-API-Key safely (string only, ignore arrays/dupes). */
+function readApiKey(req: Request): string | null {
+  const raw = readSingleHeader(req.headers["x-api-key"]);
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  return trimmed.startsWith("tmk_") ? trimmed : null;
+}
+
+export async function requireAuthOrApiKey(req: Request, res: Response, next: NextFunction) {
+  if (req.session?.userId) return next();
+  const apiKey = readApiKey(req);
+  if (!apiKey) {
+    res.status(401).json({ error: "Unauthorized", message: "Silakan login atau sertakan X-API-Key." });
+    return;
+  }
+  const userId = await validateApiKey(apiKey);
+  if (userId === null) {
+    res.status(401).json({ error: "Unauthorized", message: "API key tidak valid." });
+    return;
+  }
+  // Per-request only — do NOT poison session with API-key auth so revocation stays effective
+  // and bearer-key callers can't escalate into other session-protected routes.
+  req.apiKeyUserId = userId;
+  next();
+}
+
+/**
+ * Gate for /api/email/* — the public temp-mail endpoints documented at /api-docs.
+ *
+ *  1. Logged-in session → allow.
+ *  2. X-API-Key supplied & valid → allow & attribute to owning user (per-request, NOT persisted to session).
+ *  3. Browser navigating from this site itself → allow as anonymous (web UI keeps working).
+ *     Detection: Sec-Fetch-Site is `same-origin`/`same-site`/`none` AND, when an Origin header
+ *     is present, it matches the request Host. Note: this is an anti-abuse heuristic for
+ *     casual scrapers; it is not a security boundary — sophisticated callers can spoof headers.
+ *     Real abuse defence is rate limiting (separate concern).
+ *  4. Anything else (curl / external script with no key) → 401, matching the public docs.
+ */
+export async function publicOrApiKey(req: Request, res: Response, next: NextFunction) {
+  if (req.session?.userId) return next();
+
+  const apiKey = readApiKey(req);
+  if (apiKey) {
+    const userId = await validateApiKey(apiKey);
+    if (userId === null) {
+      res.status(401).json({ error: "Unauthorized", message: "API key tidak valid." });
+      return;
+    }
+    req.apiKeyUserId = userId;
+    return next();
+  }
+
+  const fetchSite = readSingleHeader(req.headers["sec-fetch-site"])?.toLowerCase();
+  const isBrowserFromSite =
+    fetchSite === "same-origin" || fetchSite === "same-site" || fetchSite === "none";
+
+  if (isBrowserFromSite) {
+    // Strengthen with Origin/Host parity when Origin is sent (it usually is for fetch/XHR
+    // and same-site POST). Skip when Origin is absent (top-level GET navigation has none).
+    const origin = readSingleHeader(req.headers["origin"]);
+    if (origin) {
+      const host = readSingleHeader(req.headers["host"]);
+      if (!host || !origin.includes(host)) {
+        res.status(401).json({
+          error: "Unauthorized",
+          message: "Origin tidak cocok. Sertakan header X-API-Key untuk akses lintas situs.",
+        });
+        return;
+      }
+    }
+    return next();
+  }
+
+  res.status(401).json({
+    error: "Unauthorized",
+    message: "Endpoint ini butuh API key. Sertakan header X-API-Key: tmk_... — daftar gratis di /developer.",
+  });
 }

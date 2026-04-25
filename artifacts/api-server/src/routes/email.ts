@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { Router, Request } from "express";
 import { db } from "@workspace/db";
 import { emailAddressesTable, messagesTable, blockedSendersTable } from "@workspace/db";
 import { eq, and, desc, lt } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import { publicOrApiKey } from "../lib/auth.js";
 import {
   GenerateEmailQueryParams,
   GetInboxQueryParams,
@@ -40,6 +41,19 @@ async function cleanupExpiredData() {
   await db.delete(messagesTable).where(lt(messagesTable.expiresAt, now));
   await db.delete(emailAddressesTable).where(lt(emailAddressesTable.expiresAt, now));
 }
+
+/** Returns missing query-param key, or null if every key is a non-empty string. */
+function missingQueryParam(req: Request, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = req.query[k];
+    if (typeof v !== "string" || !v.trim() || v === "undefined" || v === "null") {
+      return k;
+    }
+  }
+  return null;
+}
+
+router.use(publicOrApiKey);
 
 router.get("/generate", async (req, res) => {
   const parsed = GenerateEmailQueryParams.safeParse(req.query);
@@ -85,9 +99,10 @@ router.get("/generate", async (req, res) => {
 });
 
 router.get("/inbox", async (req, res) => {
+  const miss = missingQueryParam(req, "email");
   const parsed = GetInboxQueryParams.safeParse(req.query);
-  if (!parsed.success || !parsed.data.email) {
-    res.status(400).json({ error: "Bad request", message: "email is required" });
+  if (miss || !parsed.success) {
+    res.status(400).json({ error: "Bad request", message: `${miss ?? "email"} is required` });
     return;
   }
 
@@ -130,9 +145,10 @@ router.get("/inbox", async (req, res) => {
 });
 
 router.get("/blacklist", async (req, res) => {
+  const miss = missingQueryParam(req, "email");
   const parsed = GetBlacklistQueryParams.safeParse(req.query);
-  if (!parsed.success || !parsed.data.email) {
-    res.status(400).json({ error: "Bad request", message: "email is required" });
+  if (miss || !parsed.success) {
+    res.status(400).json({ error: "Bad request", message: `${miss ?? "email"} is required` });
     return;
   }
   const { email } = parsed.data;
@@ -171,8 +187,9 @@ router.post("/blacklist", async (req, res) => {
 });
 
 router.delete("/blacklist", async (req, res) => {
+  const miss = missingQueryParam(req, "email", "pattern");
   const parsed = RemoveFromBlacklistQueryParams.safeParse(req.query);
-  if (!parsed.success || !parsed.data.email || !parsed.data.pattern) {
+  if (miss || !parsed.success || !parsed.data.email || !parsed.data.pattern) {
     res.status(400).json({ error: "Bad request", message: "email and pattern are required" });
     return;
   }
@@ -184,8 +201,9 @@ router.delete("/blacklist", async (req, res) => {
 });
 
 router.get("/message", async (req, res) => {
+  const miss = missingQueryParam(req, "id", "email");
   const parsed = GetMessageQueryParams.safeParse(req.query);
-  if (!parsed.success || !parsed.data.id || !parsed.data.email) {
+  if (miss || !parsed.success || !parsed.data.id || !parsed.data.email) {
     res.status(400).json({ error: "Bad request", message: "id and email are required" });
     return;
   }
@@ -249,8 +267,9 @@ router.patch("/message/read", async (req, res) => {
 });
 
 router.delete("/reset", async (req, res) => {
+  const miss = missingQueryParam(req, "email");
   const parsed = ResetInboxQueryParams.safeParse(req.query);
-  if (!parsed.success || !parsed.data.email) {
+  if (miss || !parsed.success || !parsed.data.email) {
     res.status(400).json({ error: "Bad request", message: "email is required" });
     return;
   }
@@ -266,8 +285,9 @@ router.get("/domains", async (_req, res) => {
 });
 
 router.get("/stats", async (req, res) => {
+  const miss = missingQueryParam(req, "email");
   const parsed = GetEmailStatsQueryParams.safeParse(req.query);
-  if (!parsed.success || !parsed.data.email) {
+  if (miss || !parsed.success || !parsed.data.email) {
     res.status(400).json({ error: "Bad request", message: "email is required" });
     return;
   }
