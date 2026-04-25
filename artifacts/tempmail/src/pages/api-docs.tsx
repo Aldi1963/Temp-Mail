@@ -139,8 +139,8 @@ export default function ApiDocsPage() {
             {/* Header */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-xs">
-                <Link href="/">
-                  <a className="text-muted-foreground hover:text-foreground">Beranda</a>
+                <Link href="/" className="text-muted-foreground hover:text-foreground">
+                  Beranda
                 </Link>
                 <ChevronRight className="h-3 w-3 text-muted-foreground" />
                 <span className="text-foreground font-medium">Dokumentasi API</span>
