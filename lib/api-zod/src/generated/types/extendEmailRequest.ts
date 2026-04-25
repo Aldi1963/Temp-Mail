@@ -8,6 +8,10 @@
 
 export interface ExtendEmailRequest {
   email: string;
-  /** How many minutes to extend (default 30) */
+  /**
+   * How many minutes to extend (default 30, max 1440 = 24h)
+   * @minimum 1
+   * @maximum 1440
+   */
   extraMinutes?: number;
 }

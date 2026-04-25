@@ -13,4 +13,8 @@ export interface EmailStats {
   unreadCount: number;
   expiresAt: Date;
   isExpired: boolean;
+  /** When this address was first created */
+  createdAt?: Date;
+  /** Hard cap on TTL (createdAt + max session lifetime) */
+  maxExpiresAt?: Date;
 }

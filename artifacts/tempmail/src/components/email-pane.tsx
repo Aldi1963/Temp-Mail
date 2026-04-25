@@ -201,23 +201,59 @@ export function EmailPane({
     });
   };
 
+  const [extendPulse, setExtendPulse] = useState(false);
+
   const handleExtend = (minutes: number) => {
     if (!activeEmail) return;
     extendMutation.mutate(
       { data: { email: activeEmail, extraMinutes: minutes } },
       {
         onSuccess: (data) => {
-          toast({
-            title: `Diperpanjang +${minutes} menit`,
-            description: `Email aktif hingga ${new Date(data.newExpiresAt).toLocaleTimeString("id-ID")}`,
+          const applied = data.appliedMinutes ?? minutes;
+          const expiryStr = new Date(data.newExpiresAt).toLocaleTimeString(
+            "id-ID",
+            { hour: "2-digit", minute: "2-digit" },
+          );
+          if (data.capped) {
+            toast({
+              title: `Diperpanjang +${applied} menit (maksimum tercapai)`,
+              description: `Email aktif sampai ${expiryStr} — batas 24 jam dari pembuatan.`,
+            });
+          } else {
+            toast({
+              title: `Diperpanjang +${applied} menit`,
+              description: `Email aktif sampai ${expiryStr}.`,
+            });
+          }
+          setExtendPulse(true);
+          setTimeout(() => setExtendPulse(false), 900);
+          queryClient.invalidateQueries({
+            queryKey: getGetEmailStatsQueryKey({ email: activeEmail }),
           });
-          queryClient.invalidateQueries({ queryKey: getGetEmailStatsQueryKey({ email: activeEmail }) });
           refetchStats();
         },
-        onError: () => {
+        onError: (err: unknown) => {
+          // The api client throws an ApiError with `.status` and `.data`
+          // (not the axios-style `.response.status`). Read both for safety
+          // in case the underlying transport ever changes.
+          const e = err as {
+            status?: number;
+            data?: { message?: string };
+            response?: { status?: number; data?: { message?: string } };
+          };
+          const status = e?.status ?? e?.response?.status;
+          const message = e?.data?.message ?? e?.response?.data?.message;
+          if (status === 409) {
+            toast({
+              title: "Sudah maksimum 24 jam",
+              description:
+                message || "Silakan buat email baru untuk memulai sesi baru.",
+            });
+            return;
+          }
           toast({ title: "Gagal memperpanjang", variant: "destructive" });
         },
-      }
+      },
     );
   };
 
@@ -272,17 +308,79 @@ export function EmailPane({
   const timeLeftMs = stats?.expiresAt ? new Date(stats.expiresAt).getTime() - Date.now() : Infinity;
   const isNearExpiry = !isExpired && timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000;
 
+  // ── Cap-aware extend logic ──
+  // Hard cap = 24 jam dari pembuatan email. Tombol perpanjang harus tahu
+  // berapa jatah yang masih tersedia agar tidak menampilkan opsi yang
+  // pasti akan ditolak server.
+  const expiresAtMs = stats?.expiresAt ? new Date(stats.expiresAt).getTime() : 0;
+  const maxExpiresAtMs = stats?.maxExpiresAt
+    ? new Date(stats.maxExpiresAt).getTime()
+    : 0;
+  // Headroom = berapa lama lagi yang masih bisa ditambahkan ke expiry.
+  // Berbasis expiry sekarang, bukan now, supaya hasilnya konsisten dengan
+  // perilaku server (yang memakai max(expiresAt, now) sebagai base).
+  const baseMs = Math.max(expiresAtMs, Date.now());
+  const headroomMinutes = maxExpiresAtMs
+    ? Math.max(0, Math.floor((maxExpiresAtMs - baseMs) / 60000))
+    : Infinity;
+  const isAtCap = !!stats?.maxExpiresAt && headroomMinutes <= 0;
+  const formatHeadroom = (m: number) => {
+    if (!Number.isFinite(m)) return "";
+    if (m < 60) return `${m} menit`;
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    return rem ? `${h}j ${rem}m` : `${h} jam`;
+  };
+
+  // Opsi perpanjang dengan jumlah menit + label.
+  // Setiap opsi dihitung apakah masuk dalam headroom; kalau tidak, tetap
+  // ditampilkan tetapi disabled supaya pengguna tahu pilihan tsb sudah
+  // bukan pilihan valid (UX > sembunyikan diam-diam).
+  const EXTEND_OPTIONS: { minutes: number; label: string }[] = [
+    { minutes: 10, label: "+10 menit" },
+    { minutes: 30, label: "+30 menit" },
+    { minutes: 60, label: "+1 jam" },
+    { minutes: 360, label: "+6 jam" },
+    { minutes: 1440, label: "+24 jam" },
+  ];
+  const previewTime = (addMinutes: number) => {
+    const target = Math.min(baseMs + addMinutes * 60_000, maxExpiresAtMs || Infinity);
+    return new Date(target).toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   return (
     <div className="flex flex-col gap-3">
 
       {/* ── Peringatan hampir kadaluarsa ── */}
       {isNearExpiry && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-orange-300/60 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800/60 px-3.5 py-3">
+        <div
+          className="flex items-start gap-2.5 rounded-xl border border-orange-300/60 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800/60 px-3.5 py-3"
+          data-testid="warn-near-expiry"
+        >
           <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">Email hampir kadaluarsa!</p>
-            <p className="text-[11px] text-orange-600/80 dark:text-orange-400/80 mt-0.5">Sisa waktu kurang dari 5 menit. Perpanjang sekarang agar inbox tidak hilang.</p>
+            <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">
+              Email hampir kadaluarsa!
+            </p>
+            <p className="text-[11px] text-orange-600/80 dark:text-orange-400/80 mt-0.5">
+              Sisa waktu kurang dari 5 menit. Perpanjang sekarang agar inbox tidak hilang.
+            </p>
           </div>
+          {!isAtCap && (
+            <Button
+              size="sm"
+              onClick={() => handleExtend(30)}
+              disabled={extendMutation.isPending}
+              className="h-7 px-2.5 text-[11px] bg-orange-600 hover:bg-orange-700 text-white shrink-0"
+              data-testid="btn-quick-extend-warn"
+            >
+              <Zap className="h-3 w-3 mr-1" />
+              +30 menit
+            </Button>
+          )}
         </div>
       )}
 
@@ -455,20 +553,57 @@ export function EmailPane({
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 gap-1.5 h-8 text-xs hover:border-primary hover:text-primary"
-              disabled={!activeEmail || extendMutation.isPending}
+              className={`flex-1 gap-1.5 h-8 text-xs hover:border-primary hover:text-primary ${extendPulse ? "animate-pulse border-primary text-primary" : ""}`}
+              disabled={!activeEmail || extendMutation.isPending || isAtCap}
+              data-testid="btn-extend-trigger"
             >
               <Timer className="h-3.5 w-3.5" />
-              Perpanjang
-              <ChevronDown className="h-3 w-3 opacity-50" />
+              {isAtCap ? "Maks. tercapai" : "Perpanjang"}
+              {!isAtCap && <ChevronDown className="h-3 w-3 opacity-50" />}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-36">
-            {[10, 30, 60].map((min) => (
-              <DropdownMenuItem key={min} className="text-xs cursor-pointer" onClick={() => handleExtend(min)}>
-                +{min} menit
-              </DropdownMenuItem>
-            ))}
+          <DropdownMenuContent align="start" className="w-60">
+            <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border/50 mb-1 flex items-center justify-between">
+              <span>Perpanjang masa aktif</span>
+              {Number.isFinite(headroomMinutes) && (
+                <span
+                  className="text-[10px] font-mono text-muted-foreground/80"
+                  data-testid="text-headroom"
+                >
+                  sisa {formatHeadroom(headroomMinutes)}
+                </span>
+              )}
+            </div>
+            {EXTEND_OPTIONS.map((opt) => {
+              const fits = opt.minutes <= headroomMinutes;
+              const partial = !fits && headroomMinutes > 0;
+              return (
+                <DropdownMenuItem
+                  key={opt.minutes}
+                  className="text-xs cursor-pointer flex items-center justify-between gap-3"
+                  disabled={!fits && !partial}
+                  onClick={() => handleExtend(opt.minutes)}
+                  data-testid={`btn-extend-${opt.minutes}`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {opt.label}
+                    {partial && (
+                      <span className="text-[9px] text-orange-600 dark:text-orange-400 font-medium">
+                        (akan dipotong)
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    → {previewTime(opt.minutes)}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+            {isAtCap && (
+              <div className="px-2 py-2 text-[10px] text-muted-foreground border-t border-border/50 mt-1">
+                Sudah mencapai batas 24 jam dari pembuatan. Silakan buat email baru.
+              </div>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

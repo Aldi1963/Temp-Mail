@@ -57,6 +57,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Existing address has reached its 24h lifetime cap and cannot be reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapReachedResponse"
   /email/inbox:
     get:
       operationId: getInbox
@@ -180,12 +186,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExtendEmailResponse"
+        "400":
+          description: Invalid request body (bad email or extraMinutes out of 1..1440)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Email not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Hard cap reached (24h since creation). Includes maxExpiresAt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapReachedResponse"
 
   /email/domains:
     get:
@@ -460,6 +478,14 @@ components:
           format: date-time
         isExpired:
           type: boolean
+        createdAt:
+          type: string
+          format: date-time
+          description: When this address was first created
+        maxExpiresAt:
+          type: string
+          format: date-time
+          description: Hard cap on TTL (createdAt + max session lifetime)
       required:
         - email
         - totalMessages
@@ -475,7 +501,9 @@ components:
           type: string
         extraMinutes:
           type: integer
-          description: How many minutes to extend (default 30)
+          minimum: 1
+          maximum: 1440
+          description: How many minutes to extend (default 30, max 1440 = 24h)
       required:
         - email
 
@@ -489,6 +517,16 @@ components:
           format: date-time
         extended:
           type: boolean
+        maxExpiresAt:
+          type: string
+          format: date-time
+          description: Hard cap on TTL (createdAt + max session lifetime)
+        capped:
+          type: boolean
+          description: True when the requested extension was clamped to the max cap
+        appliedMinutes:
+          type: integer
+          description: Actual minutes added after clamping
       required:
         - email
         - newExpiresAt
@@ -515,6 +553,22 @@ components:
       required:
         - error
         - message
+
+    CapReachedResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        maxExpiresAt:
+          type: string
+          format: date-time
+          description: The hard lifetime cap (createdAt + 24h)
+      required:
+        - error
+        - message
+        - maxExpiresAt
 
     BlacklistEntry:
       type: object

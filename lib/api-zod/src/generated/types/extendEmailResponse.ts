@@ -10,4 +10,10 @@ export interface ExtendEmailResponse {
   email: string;
   newExpiresAt: Date;
   extended: boolean;
+  /** Hard cap on TTL (createdAt + max session lifetime) */
+  maxExpiresAt?: Date;
+  /** True when the requested extension was clamped to the max cap */
+  capped?: boolean;
+  /** Actual minutes added after clamping */
+  appliedMinutes?: number;
 }

@@ -21,6 +21,10 @@ const router = Router();
 
 const AVAILABLE_DOMAINS = ["tmpmail.dev", "quickmail.io", "throwaway.net"];
 const SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// Hard cap on total lifetime, counted from first creation. Prevents abuse
+// where a caller keeps extending forever to keep a free address alive.
+const MAX_LIFETIME_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_EXTRA_MINUTES = 1440; // single-call cap (24h)
 
 function generateUsername(length = 8): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -74,6 +78,8 @@ router.get("/generate", async (req, res) => {
   const existing = await db.select().from(emailAddressesTable).where(eq(emailAddressesTable.email, email)).limit(1);
   const userId = req.session?.userId ?? null;
 
+  let effectiveCreatedAt = now;
+  let effectiveExpiresAt = expiresAt;
   if (existing.length === 0) {
     await db.insert(emailAddressesTable).values({
       email,
@@ -84,17 +90,41 @@ router.get("/generate", async (req, res) => {
       expiresAt,
     });
   } else {
-    const updateData: Record<string, unknown> = { expiresAt };
-    if (userId && !existing[0].userId) updateData.userId = userId;
-    await db.update(emailAddressesTable).set(updateData).where(eq(emailAddressesTable.email, email));
+    // Reusing an existing address. Enforce the same 24h-from-creation cap
+    // here so /generate can't be used as a backdoor to keep an address
+    // alive forever. Clamp the refreshed expiry to maxExpiresAt; if there's
+    // no headroom left, return 409 just like /extend does.
+    const existingRow = existing[0];
+    const maxExpiresAt = new Date(
+      existingRow.createdAt.getTime() + MAX_LIFETIME_MS,
+    );
+    if (now >= maxExpiresAt) {
+      res.status(409).json({
+        error: "Cap reached",
+        message:
+          "Alamat ini sudah mencapai batas 24 jam dari pembuatan. Silakan pilih username lain.",
+        maxExpiresAt: maxExpiresAt.toISOString(),
+      });
+      return;
+    }
+    const refreshedExpiresAt =
+      expiresAt > maxExpiresAt ? maxExpiresAt : expiresAt;
+    const updateData: Record<string, unknown> = { expiresAt: refreshedExpiresAt };
+    if (userId && !existingRow.userId) updateData.userId = userId;
+    await db
+      .update(emailAddressesTable)
+      .set(updateData)
+      .where(eq(emailAddressesTable.email, email));
+    effectiveCreatedAt = existingRow.createdAt;
+    effectiveExpiresAt = refreshedExpiresAt;
   }
 
   res.json({
     email,
     username: selectedUsername,
     domain: selectedDomain,
-    expiresAt: expiresAt.toISOString(),
-    createdAt: now.toISOString(),
+    expiresAt: effectiveExpiresAt.toISOString(),
+    createdAt: effectiveCreatedAt.toISOString(),
   });
 });
 
@@ -315,6 +345,7 @@ router.get("/stats", async (req, res) => {
   const unreadCount = messages.filter((m) => !m.isRead).length;
   const now = new Date();
 
+  const maxExpiresAt = new Date(addr.createdAt.getTime() + MAX_LIFETIME_MS);
   res.json({
     email,
     totalMessages: messages.length,
@@ -322,33 +353,106 @@ router.get("/stats", async (req, res) => {
     unreadCount,
     expiresAt: addr.expiresAt.toISOString(),
     isExpired: addr.expiresAt < now,
+    createdAt: addr.createdAt.toISOString(),
+    maxExpiresAt: maxExpiresAt.toISOString(),
   });
 });
 
 router.post("/extend", async (req, res) => {
   const parsed = ExtendEmailBody.safeParse(req.body);
-  if (!parsed.success || !parsed.data.email) {
-    res.status(400).json({ error: "Bad request", message: "email is required" });
+  if (!parsed.success) {
+    // Differentiate the two common cases so the client gets an actionable
+    // message instead of a generic "bad request".
+    const issues = parsed.error.issues;
+    const isExtraMinutesIssue = issues.some((i) =>
+      i.path.includes("extraMinutes"),
+    );
+    res.status(400).json({
+      error: "Bad request",
+      message: isExtraMinutesIssue
+        ? `extraMinutes harus bilangan bulat antara 1 dan ${MAX_EXTRA_MINUTES}.`
+        : "email is required",
+    });
+    return;
+  }
+  if (!parsed.data.email) {
+    res
+      .status(400)
+      .json({ error: "Bad request", message: "email is required" });
     return;
   }
 
-  const { email, extraMinutes } = parsed.data;
-  const extra = (extraMinutes ?? 30) * 60 * 1000;
+  const { email } = parsed.data;
+  // Server-side belt-and-suspenders integer + range guard. The openapi
+  // schema declares `type: integer` but the generated zod uses
+  // .number().min(1).max(1440), which lets fractional values slip through.
+  // Reject non-integers explicitly so the contract matches the spec.
+  const requestedMinutes = parsed.data.extraMinutes ?? 30;
+  if (!Number.isInteger(requestedMinutes)) {
+    res.status(400).json({
+      error: "Bad request",
+      message: `extraMinutes harus bilangan bulat antara 1 dan ${MAX_EXTRA_MINUTES}.`,
+    });
+    return;
+  }
+  const safeMinutes = Math.max(1, Math.min(requestedMinutes, MAX_EXTRA_MINUTES));
+  const extra = safeMinutes * 60 * 1000;
 
-  const results = await db.select().from(emailAddressesTable).where(eq(emailAddressesTable.email, email)).limit(1);
+  const results = await db
+    .select()
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.email, email))
+    .limit(1);
   if (results.length === 0) {
     res.status(404).json({ error: "Not found", message: "Email address not found" });
     return;
   }
 
   const current = results[0];
-  const base = current.expiresAt > new Date() ? current.expiresAt : new Date();
-  const newExpiresAt = new Date(base.getTime() + extra);
+  const now = new Date();
+  const base = current.expiresAt > now ? current.expiresAt : now;
+  const desiredExpiresAt = new Date(base.getTime() + extra);
+  const maxExpiresAt = new Date(current.createdAt.getTime() + MAX_LIFETIME_MS);
 
-  await db.update(emailAddressesTable).set({ expiresAt: newExpiresAt }).where(eq(emailAddressesTable.email, email));
-  await db.update(messagesTable).set({ expiresAt: newExpiresAt }).where(eq(messagesTable.email, email));
+  // Cap reached when EITHER the stored expiry is already at/over the cap
+  // OR the wall clock has crossed the cap (stale record awaiting cleanup).
+  // In both cases there's no meaningful headroom left, so a 200 "extended"
+  // response would be misleading — return 409 instead.
+  if (current.expiresAt >= maxExpiresAt || base >= maxExpiresAt) {
+    res.status(409).json({
+      error: "Cap reached",
+      message:
+        "Maksimum masa aktif (24 jam sejak dibuat) sudah tercapai. Silakan buat email baru.",
+      maxExpiresAt: maxExpiresAt.toISOString(),
+    });
+    return;
+  }
 
-  res.json({ email, newExpiresAt: newExpiresAt.toISOString(), extended: true });
+  // Clamp newExpiresAt to the cap so we can never exceed MAX_LIFETIME_MS
+  const capped = desiredExpiresAt > maxExpiresAt;
+  const newExpiresAt = capped ? maxExpiresAt : desiredExpiresAt;
+  const appliedMinutes = Math.max(
+    0,
+    Math.round((newExpiresAt.getTime() - base.getTime()) / 60000),
+  );
+
+  await db
+    .update(emailAddressesTable)
+    .set({ expiresAt: newExpiresAt })
+    .where(eq(emailAddressesTable.email, email));
+  await db
+    .update(messagesTable)
+    .set({ expiresAt: newExpiresAt })
+    .where(eq(messagesTable.email, email));
+
+  res.json({
+    email,
+    newExpiresAt: newExpiresAt.toISOString(),
+    extended: true,
+    maxExpiresAt: maxExpiresAt.toISOString(),
+    capped,
+    appliedMinutes,
+  });
 });
 
 export { router as emailRouter, generateMessageId, SESSION_TTL_MS, AVAILABLE_DOMAINS };

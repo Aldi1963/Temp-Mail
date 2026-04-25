@@ -10,6 +10,7 @@ export * from "./addBlacklistRequest";
 export * from "./attachment";
 export * from "./blacklistEntry";
 export * from "./blacklistResponse";
+export * from "./capReachedResponse";
 export * from "./domainsResponse";
 export * from "./emailMessage";
 export * from "./emailMessageSummary";

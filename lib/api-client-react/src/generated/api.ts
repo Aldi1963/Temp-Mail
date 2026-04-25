@@ -19,6 +19,7 @@ import type {
 import type {
   AddBlacklistRequest,
   BlacklistResponse,
+  CapReachedResponse,
   DomainsResponse,
   EmailMessage,
   EmailStats,
@@ -159,7 +160,7 @@ export const getGenerateEmailQueryKey = (params?: GenerateEmailParams) => {
 
 export const getGenerateEmailQueryOptions = <
   TData = Awaited<ReturnType<typeof generateEmail>>,
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | CapReachedResponse>,
 >(
   params?: GenerateEmailParams,
   options?: {
@@ -189,7 +190,9 @@ export const getGenerateEmailQueryOptions = <
 export type GenerateEmailQueryResult = NonNullable<
   Awaited<ReturnType<typeof generateEmail>>
 >;
-export type GenerateEmailQueryError = ErrorType<ErrorResponse>;
+export type GenerateEmailQueryError = ErrorType<
+  ErrorResponse | CapReachedResponse
+>;
 
 /**
  * @summary Generate a temporary email address
@@ -197,7 +200,7 @@ export type GenerateEmailQueryError = ErrorType<ErrorResponse>;
 
 export function useGenerateEmail<
   TData = Awaited<ReturnType<typeof generateEmail>>,
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | CapReachedResponse>,
 >(
   params?: GenerateEmailParams,
   options?: {
@@ -608,7 +611,7 @@ export const extendEmail = async (
 };
 
 export const getExtendEmailMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | CapReachedResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -649,13 +652,15 @@ export type ExtendEmailMutationResult = NonNullable<
   Awaited<ReturnType<typeof extendEmail>>
 >;
 export type ExtendEmailMutationBody = BodyType<ExtendEmailRequest>;
-export type ExtendEmailMutationError = ErrorType<ErrorResponse>;
+export type ExtendEmailMutationError = ErrorType<
+  ErrorResponse | CapReachedResponse
+>;
 
 /**
  * @summary Extend the TTL of a temporary email address
  */
 export const useExtendEmail = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | CapReachedResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<

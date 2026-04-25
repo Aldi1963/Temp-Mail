@@ -110,18 +110,34 @@ export const ResetInboxResponse = zod.object({
 /**
  * @summary Extend the TTL of a temporary email address
  */
+export const extendEmailBodyExtraMinutesMax = 1440;
+
 export const ExtendEmailBody = zod.object({
   email: zod.string(),
   extraMinutes: zod
     .number()
+    .min(1)
+    .max(extendEmailBodyExtraMinutesMax)
     .optional()
-    .describe("How many minutes to extend (default 30)"),
+    .describe("How many minutes to extend (default 30, max 1440 = 24h)"),
 });
 
 export const ExtendEmailResponse = zod.object({
   email: zod.string(),
   newExpiresAt: zod.coerce.date(),
   extended: zod.boolean(),
+  maxExpiresAt: zod.coerce
+    .date()
+    .optional()
+    .describe("Hard cap on TTL (createdAt + max session lifetime)"),
+  capped: zod
+    .boolean()
+    .optional()
+    .describe("True when the requested extension was clamped to the max cap"),
+  appliedMinutes: zod
+    .number()
+    .optional()
+    .describe("Actual minutes added after clamping"),
 });
 
 /**
@@ -192,4 +208,12 @@ export const GetEmailStatsResponse = zod.object({
   unreadCount: zod.number(),
   expiresAt: zod.coerce.date(),
   isExpired: zod.boolean(),
+  createdAt: zod.coerce
+    .date()
+    .optional()
+    .describe("When this address was first created"),
+  maxExpiresAt: zod.coerce
+    .date()
+    .optional()
+    .describe("Hard cap on TTL (createdAt + max session lifetime)"),
 });

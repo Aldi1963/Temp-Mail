@@ -75,11 +75,19 @@ export interface EmailStats {
   unreadCount: number;
   expiresAt: string;
   isExpired: boolean;
+  /** When this address was first created */
+  createdAt?: string;
+  /** Hard cap on TTL (createdAt + max session lifetime) */
+  maxExpiresAt?: string;
 }
 
 export interface ExtendEmailRequest {
   email: string;
-  /** How many minutes to extend (default 30) */
+  /**
+   * How many minutes to extend (default 30, max 1440 = 24h)
+   * @minimum 1
+   * @maximum 1440
+   */
   extraMinutes?: number;
 }
 
@@ -87,6 +95,12 @@ export interface ExtendEmailResponse {
   email: string;
   newExpiresAt: string;
   extended: boolean;
+  /** Hard cap on TTL (createdAt + max session lifetime) */
+  maxExpiresAt?: string;
+  /** True when the requested extension was clamped to the max cap */
+  capped?: boolean;
+  /** Actual minutes added after clamping */
+  appliedMinutes?: number;
 }
 
 export interface SuccessResponse {
@@ -97,6 +111,13 @@ export interface SuccessResponse {
 export interface ErrorResponse {
   error: string;
   message: string;
+}
+
+export interface CapReachedResponse {
+  error: string;
+  message: string;
+  /** The hard lifetime cap (createdAt + 24h) */
+  maxExpiresAt: string;
 }
 
 export interface BlacklistEntry {
