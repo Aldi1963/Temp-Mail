@@ -4,6 +4,7 @@ import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, ShieldCheck, LayoutDashboard,
 import { useTheme } from "./theme-provider";
 import { useSound } from "@/hooks/use-sound";
 import { useAuth } from "@/hooks/use-auth";
+import { useBranding } from "@/hooks/use-branding";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import {
@@ -22,6 +23,9 @@ export function Header({ rightSlot }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } = useSound();
   const { user, logout, isLoading } = useAuth();
+  const { branding } = useBranding();
+  const siteName = (branding.site_name || "TempMail").trim();
+  const siteLogo = (branding.site_logo_url || "").trim();
 
   return (
     <header className="border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-50">
@@ -30,13 +34,21 @@ export function Header({ rightSlot }: HeaderProps) {
         <Link href="/">
           <div className="flex items-center gap-2.5 cursor-pointer select-none group">
             <div className="relative">
-              <div className="absolute inset-0 bg-primary/30 rounded-lg blur group-hover:blur-md transition-all" />
-              <div className="relative bg-primary/10 p-1.5 rounded-lg text-primary border border-primary/20 group-hover:bg-primary/20 transition-colors">
-                <Mail className="h-4.5 w-4.5 h-[18px] w-[18px]" />
-              </div>
+              {siteLogo ? (
+                <div className="relative h-9 w-9 rounded-lg overflow-hidden border border-border/60 bg-muted/30 flex items-center justify-center">
+                  <img src={siteLogo} alt={siteName} className="h-full w-full object-contain" />
+                </div>
+              ) : (
+                <>
+                  <div className="absolute inset-0 bg-primary/30 rounded-lg blur group-hover:blur-md transition-all" />
+                  <div className="relative bg-primary/10 p-1.5 rounded-lg text-primary border border-primary/20 group-hover:bg-primary/20 transition-colors">
+                    <Mail className="h-4.5 w-4.5 h-[18px] w-[18px]" />
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="font-bold text-base tracking-tight text-foreground">TempMail</span>
+              <span className="font-bold text-base tracking-tight text-foreground">{siteName}</span>
               <span className="hidden sm:inline text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full leading-none">
                 GRATIS
               </span>

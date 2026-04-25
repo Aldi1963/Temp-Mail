@@ -131,6 +131,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   // Branding & SEO
   site_description: "Layanan email sementara gratis. Buat alamat email sekali pakai secara instan.",
   site_logo_url: "",
+  site_favicon_url: "",
   meta_title: "TempMail - Email Sementara Gratis",
   meta_keywords: "email sementara, temporary email, disposable email, temp mail",
   footer_text: "© 2025 TempMail. Semua hak cipta dilindungi.",

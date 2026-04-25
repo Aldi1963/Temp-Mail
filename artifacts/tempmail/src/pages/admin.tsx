@@ -46,6 +46,7 @@ interface SiteSettings {
   site_name: string; default_ttl_minutes: string; max_inboxes: string;
   available_domains: string; allow_registration: string; maintenance_mode: string;
   max_message_size_kb: string; site_description: string; site_logo_url: string;
+  site_favicon_url: string;
   meta_title: string; meta_keywords: string; footer_text: string;
   require_login_to_generate: string; max_emails_per_day: string;
   show_qr_by_default: string; auto_copy_on_generate: string;
@@ -71,6 +72,112 @@ const NAV = [
   { id: "users" as Section, icon: Users, label: "Pengguna" },
   { id: "stats" as Section, icon: BarChart2, label: "Statistik" },
 ];
+
+function BrandingImageField({
+  label, hint, value, onChange, previewClass, maxKB = 500,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  previewClass: string;
+  maxKB?: number;
+}) {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [mode, setMode] = useState<"upload" | "url">(value.startsWith("http") ? "url" : "upload");
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Format tidak didukung", description: "Pilih file gambar (PNG/SVG/JPG/ICO).", variant: "destructive" });
+      return;
+    }
+    const sizeKB = file.size / 1024;
+    if (sizeKB > maxKB) {
+      toast({
+        title: "File terlalu besar",
+        description: `Ukuran ${sizeKB.toFixed(0)} KB melebihi batas ${maxKB} KB. Kompres dulu sebelum upload.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Gagal baca file"));
+        reader.readAsDataURL(file);
+      });
+      onChange(dataUrl);
+      toast({ title: "Berhasil diupload", description: "Klik 'Simpan Pengaturan' di bawah agar perubahan diterapkan." });
+    } catch (err) {
+      toast({ title: "Gagal upload", description: String(err), variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const hasValue = value && value.length > 0;
+
+  return (
+    <div className="space-y-2 p-3 rounded-xl border border-border bg-muted/20">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="font-semibold">{label}</Label>
+        <div className="flex gap-1">
+          <Button type="button" size="sm" variant={mode === "upload" ? "default" : "ghost"} className="h-7 px-2 text-xs" onClick={() => setMode("upload")}>
+            Upload File
+          </Button>
+          <Button type="button" size="sm" variant={mode === "url" ? "default" : "ghost"} className="h-7 px-2 text-xs" onClick={() => setMode("url")}>
+            URL
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className={`shrink-0 border border-border bg-background flex items-center justify-center overflow-hidden ${previewClass}`}>
+          {hasValue ? (
+            <img src={value} alt="preview" className="h-full w-full object-contain" />
+          ) : (
+            <Image className="h-4 w-4 text-muted-foreground/40" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0 space-y-2">
+          {mode === "upload" ? (
+            <>
+              <input
+                type="file"
+                accept="image/png,image/svg+xml,image/jpeg,image/jpg,image/x-icon,image/vnd.microsoft.icon"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                  e.target.value = "";
+                }}
+                className="block text-xs file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground file:text-xs file:cursor-pointer file:hover:bg-primary/90 cursor-pointer"
+                disabled={uploading}
+              />
+            </>
+          ) : (
+            <Input
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder="https://example.com/logo.png"
+              className="h-8 text-sm font-mono"
+            />
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] text-muted-foreground">{hint}</p>
+            {hasValue && (
+              <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={() => onChange("")}>
+                <X className="h-3 w-3 mr-1" /> Hapus
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ToggleRow({ label, desc, checked, onToggle }: {
   label: string; desc: string; checked: boolean; onToggle: () => void;
@@ -488,22 +595,36 @@ export default function AdminPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Image className="h-4 w-4" /> Branding & Identitas</CardTitle>
-                  <CardDescription>Nama, deskripsi, dan logo situs.</CardDescription>
+                  <CardDescription>Nama, logo header, dan favicon (ikon tab browser) situs.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-5">
                   {loading ? <div className="space-y-3">{[1,2,3].map(i=><Skeleton key={i} className="h-10 w-full"/>)}</div> : (
                     <>
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label>Nama Situs</Label>
-                          <Input value={editSettings.site_name ?? ""} onChange={(e) => set("site_name", e.target.value)} placeholder="TempMail" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>URL Logo Situs</Label>
-                          <Input value={editSettings.site_logo_url ?? ""} onChange={(e) => set("site_logo_url", e.target.value)} placeholder="https://..." />
-                          <p className="text-xs text-muted-foreground">Kosongkan untuk menggunakan ikon default.</p>
-                        </div>
+                      <div className="space-y-1.5">
+                        <Label>Nama Situs</Label>
+                        <Input value={editSettings.site_name ?? ""} onChange={(e) => set("site_name", e.target.value)} placeholder="TempMail" />
+                        <p className="text-xs text-muted-foreground">Ditampilkan di header dan judul tab browser.</p>
                       </div>
+
+                      {/* Logo */}
+                      <BrandingImageField
+                        label="Logo Situs (header)"
+                        hint="PNG/SVG/JPG, maks 500 KB. Ditampilkan di header sebelah nama situs."
+                        value={editSettings.site_logo_url ?? ""}
+                        onChange={(v) => set("site_logo_url", v)}
+                        previewClass="h-12 w-12 rounded-lg"
+                      />
+
+                      {/* Favicon */}
+                      <BrandingImageField
+                        label="Favicon (ikon tab browser)"
+                        hint="PNG/SVG/ICO, maks 200 KB. Disarankan ukuran persegi 256×256."
+                        value={editSettings.site_favicon_url ?? ""}
+                        onChange={(v) => set("site_favicon_url", v)}
+                        previewClass="h-8 w-8 rounded-md"
+                        maxKB={200}
+                      />
+
                       <div className="space-y-1.5">
                         <Label>Deskripsi Singkat Situs</Label>
                         <Textarea

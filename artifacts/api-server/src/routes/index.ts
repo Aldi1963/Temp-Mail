@@ -6,6 +6,7 @@ import { adminRouter } from "./admin";
 import { userRouter } from "./user";
 import { developerRouter } from "./developer";
 import { webhookRouter } from "./webhook";
+import { siteRouter } from "./site";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use("/admin", adminRouter);
 router.use("/user", userRouter);
 router.use("/developer", developerRouter);
 router.use("/webhook", webhookRouter);
+router.use("/site", siteRouter);
 
 export default router;
