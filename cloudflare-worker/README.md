@@ -3,6 +3,8 @@
 Folder ini berisi kode **Cloudflare Email Worker** yang menjembatani **Cloudflare Email Routing** dengan backend TempMail. Email yang dikirim ke domain kamu akan diterima Cloudflare, di-forward ke Worker, lalu Worker mem-POST isinya ke webhook TempMail sehingga muncul di inbox secara real-time.
 
 > **Bahasa:** dokumen ini sengaja ditulis dalam Bahasa Indonesia agar mudah diikuti dari HP. Istilah teknis tetap dipertahankan dalam bahasa Inggris karena UI Cloudflare berbahasa Inggris.
+>
+> **Terakhir diverifikasi:** April 2026 — limit/quota/pricing Cloudflare di bagian [Batasan Cloudflare](#batasan-cloudflare) dan [Catatan Tambahan](#catatan-tambahan) dapat berubah setelah tanggal ini. Selalu cek halaman dokumentasi Cloudflare resmi untuk angka terbaru.
 
 ## Daftar Isi
 
