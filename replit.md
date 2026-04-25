@@ -93,6 +93,8 @@ A full-featured temporary email service similar to temp-mail.org.
 
 **Session note:** `user_sessions` table is auto-created on API server startup via `ensureSessionTable()` in `index.ts`.
 
+**Cloudflare Email Routing integration:** The `cloudflare-worker/` folder contains two Email Worker scripts (simple version for browser deploy, full version with `postal-mime` for Wrangler deploy) that bridge Cloudflare Email Routing to the TempMail `/api/webhook/inbound-email` endpoint. See `cloudflare-worker/README.md` for the end-to-end setup guide (domain prep, secret retrieval, deploy via Dashboard or Wrangler/Termux, routing rule, and troubleshooting).
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
