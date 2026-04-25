@@ -353,15 +353,19 @@ export default function DeveloperPage() {
           </div>
         </div>
 
-        {/* ── Dokumentasi API Singkat ── */}
-        <div className="rounded-xl border bg-muted/30 p-4 space-y-2">
-          <p className="text-sm font-medium">Cara Pakai API</p>
-          <div className="bg-background rounded-lg p-3 font-mono text-xs text-muted-foreground space-y-1 overflow-x-auto">
-            <div><span className="text-primary">GET</span>  /api/email/generate <span className="text-muted-foreground/60">X-API-Key: tmk_xxx...</span></div>
-            <div><span className="text-primary">GET</span>  /api/email/inbox?email=... <span className="text-muted-foreground/60">X-API-Key: tmk_xxx...</span></div>
-            <div><span className="text-primary">GET</span>  /api/email/message?id=&email=... <span className="text-muted-foreground/60">X-API-Key: tmk_xxx...</span></div>
+        {/* ── Link ke Dokumentasi API Lengkap ── */}
+        <Link href="/api-docs">
+          <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/5 via-primary/5 to-transparent p-4 flex items-center gap-3 cursor-pointer hover:border-primary/50 hover:bg-primary/10 transition-all group">
+            <div className="h-10 w-10 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+              <Code2 className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">Dokumentasi API Lengkap</p>
+              <p className="text-xs text-muted-foreground truncate">Endpoint, parameter, contoh request &amp; response — bisa diakses tanpa login.</p>
+            </div>
+            <ChevronLeft className="h-4 w-4 text-muted-foreground rotate-180 group-hover:text-primary transition-colors shrink-0" />
           </div>
-        </div>
+        </Link>
 
         {/* ── API Keys ── */}
         <section className="space-y-3">

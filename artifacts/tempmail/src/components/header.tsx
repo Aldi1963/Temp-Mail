@@ -63,6 +63,12 @@ export function Header({ rightSlot }: HeaderProps) {
               Tentang
             </span>
           </Link>
+          <Link href="/api-docs">
+            <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer inline-flex items-center gap-1">
+              <Code2 className="h-3 w-3" />
+              API
+            </span>
+          </Link>
         </nav>
 
         {/* Right controls */}
