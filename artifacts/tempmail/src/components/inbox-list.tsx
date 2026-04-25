@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Search, Mail, MailOpen, AlertCircle, RefreshCw, CheckCheck, ArrowUpDown, Bell, BellOff } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +17,10 @@ import { EmailMessageSummary } from "@workspace/api-client-react";
 interface InboxListProps {
   messages: EmailMessageSummary[];
   isLoading: boolean;
+  isFetching?: boolean;
+  dataUpdatedAt?: number;
+  refetchIntervalMs?: number;
+  isAutoRefreshEnabled?: boolean;
   selectedMessageId: string | null;
   onSelectMessage: (id: string) => void;
   onRefresh?: () => void;
@@ -31,6 +35,10 @@ type SortType = "newest" | "oldest" | "sender";
 export function InboxList({
   messages,
   isLoading,
+  isFetching,
+  dataUpdatedAt,
+  refetchIntervalMs,
+  isAutoRefreshEnabled = true,
   selectedMessageId,
   onSelectMessage,
   onRefresh,
@@ -42,6 +50,51 @@ export function InboxList({
   const [sort, setSort] = useState<SortType>("newest");
   const [search, setSearch] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [now, setNow] = useState<number>(() => Date.now());
+
+  // Only run the 1s ticker when there's actually a polling indicator to render.
+  // Avoids redundant per-second re-renders in the hidden mobile/desktop variant
+  // and when polling is paused (e.g., PIN-locked, no active inbox).
+  const tickerActive =
+    isAutoRefreshEnabled && !!refetchIntervalMs && !!dataUpdatedAt;
+
+  useEffect(() => {
+    if (!tickerActive) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [tickerActive]);
+
+  const refreshStatus = useMemo(() => {
+    if (!isAutoRefreshEnabled || !refetchIntervalMs || !dataUpdatedAt) return null;
+    if (isFetching) {
+      return { state: "fetching" as const, label: "Memperbarui inbox..." };
+    }
+    const elapsedMs = Math.max(0, now - dataUpdatedAt);
+    const elapsedSec = Math.floor(elapsedMs / 1000);
+    const remainingMs = refetchIntervalMs - elapsedMs;
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    const elapsedMin = Math.floor(elapsedSec / 60);
+    const elapsedHr = Math.floor(elapsedMin / 60);
+    const lastSeen =
+      elapsedSec < 5
+        ? "baru saja"
+        : elapsedSec < 60
+        ? `${elapsedSec}d lalu`
+        : elapsedMin < 60
+        ? `${elapsedMin}m lalu`
+        : `${elapsedHr}j lalu`;
+    if (remainingSec <= 0) {
+      // Past the scheduled refresh — likely tab in background / network throttled.
+      return {
+        state: "overdue" as const,
+        label: `Diperbarui ${lastSeen} · refresh tertunda`,
+      };
+    }
+    return {
+      state: "idle" as const,
+      label: `Diperbarui ${lastSeen} · refresh dalam ${remainingSec}d`,
+    };
+  }, [isFetching, dataUpdatedAt, refetchIntervalMs, isAutoRefreshEnabled, now]);
 
   const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
 
@@ -174,6 +227,23 @@ export function InboxList({
             </Button>
           ))}
         </div>
+
+        {/* Auto-refresh status indicator */}
+        {refreshStatus && (
+          <div
+            className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/80 px-0.5"
+            data-testid="inbox-refresh-status"
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                refreshStatus.state === "fetching"
+                  ? "bg-primary animate-pulse"
+                  : "bg-green-500/70"
+              }`}
+            />
+            <span className="truncate font-medium tabular-nums">{refreshStatus.label}</span>
+          </div>
+        )}
 
         {/* Notification permission banner */}
         {notifPermission === "default" && onRequestNotif && (

@@ -81,12 +81,13 @@ export default function Home() {
     setActiveEmailRaw(email);
   }, [setActiveEmailRaw]);
 
-  const { data: inbox, isLoading, refetch: refetchInbox } = useGetInbox(
+  const INBOX_REFETCH_INTERVAL_MS = 5000;
+  const { data: inbox, isLoading, isFetching: isFetchingInbox, dataUpdatedAt: inboxUpdatedAt, refetch: refetchInbox } = useGetInbox(
     { email: activeEmail! },
     {
       query: {
         enabled: !!activeEmail && isUnlocked,
-        refetchInterval: 5000,
+        refetchInterval: INBOX_REFETCH_INTERVAL_MS,
         queryKey: getGetInboxQueryKey({ email: activeEmail! }),
       },
     }
@@ -239,6 +240,10 @@ export default function Home() {
             <InboxList
               messages={inbox?.messages || []}
               isLoading={isLoading && !!activeEmail}
+              isFetching={isFetchingInbox}
+              dataUpdatedAt={inboxUpdatedAt}
+              refetchIntervalMs={INBOX_REFETCH_INTERVAL_MS}
+              isAutoRefreshEnabled={!!activeEmail && isUnlocked}
               selectedMessageId={selectedMessageId}
               onSelectMessage={handleSelectMessage}
               onRefresh={handleRefreshInbox}
@@ -311,6 +316,10 @@ export default function Home() {
             <InboxList
               messages={inbox?.messages || []}
               isLoading={isLoading && !!activeEmail}
+              isFetching={isFetchingInbox}
+              dataUpdatedAt={inboxUpdatedAt}
+              refetchIntervalMs={INBOX_REFETCH_INTERVAL_MS}
+              isAutoRefreshEnabled={!!activeEmail && isUnlocked}
               selectedMessageId={selectedMessageId}
               onSelectMessage={setSelectedMessageId}
               onRefresh={handleRefreshInbox}
