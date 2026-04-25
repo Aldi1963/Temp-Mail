@@ -197,7 +197,7 @@ export default function ApiDocsPage() {
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Semua request ke endpoint terproteksi membutuhkan API key di header
                 <code className="bg-muted px-1.5 py-0.5 rounded text-xs mx-1">X-API-Key</code>.
-                API key dapat dibuat di halaman <Link href="/developer"><a className="text-primary underline-offset-2 hover:underline">Developer Tools</a></Link> setelah login.
+                API key dapat dibuat di halaman <Link href="/developer" className="text-primary underline-offset-2 hover:underline">Developer Tools</Link> setelah login.
               </p>
               <CodeBlock lang="curl">{`curl -H "X-API-Key: tmk_your_key_here" \\
   ${window.location.origin}/api/email/generate`}</CodeBlock>
