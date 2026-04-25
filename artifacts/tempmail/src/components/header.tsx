@@ -56,7 +56,7 @@ export function Header({ rightSlot }: HeaderProps) {
           </div>
         </Link>
 
-        {/* Desktop nav links */}
+        {/* Desktop-only text nav links */}
         <nav className="hidden md:flex items-center gap-1 ml-6">
           <Link href="/tentang">
             <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer">
@@ -74,6 +74,19 @@ export function Header({ rightSlot }: HeaderProps) {
         {/* Right controls */}
         <div className="flex items-center gap-1.5 ml-auto">
           {rightSlot}
+
+          {/* Mobile-only quick link to API docs (desktop has it in the nav above) */}
+          <Link href="/api-docs">
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Dokumentasi API"
+              aria-label="Dokumentasi API"
+              className="md:hidden h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <Code2 className="h-4 w-4" />
+            </Button>
+          </Link>
 
           <div className="h-5 w-px bg-border/60 mx-1 hidden sm:block" />
 
