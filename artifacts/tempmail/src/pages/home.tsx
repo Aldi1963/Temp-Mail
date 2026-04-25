@@ -379,6 +379,10 @@ export default function Home() {
           <span>© {new Date().getFullYear()} TempMail — Layanan email sementara gratis.</span>
           <div className="flex items-center gap-4">
             <Link href="/tentang" className="hover:text-foreground transition-colors">Tentang</Link>
+            <Link href="/status" className="hover:text-foreground transition-colors inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              Status
+            </Link>
             <Link href="/privacy" className="hover:text-foreground transition-colors">Kebijakan Privasi</Link>
             <Link href="/terms" className="hover:text-foreground transition-colors">Syarat Layanan</Link>
           </div>

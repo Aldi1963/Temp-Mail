@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link } from "wouter";
-import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle } from "lucide-react";
+import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle, Activity } from "lucide-react";
 import { useTheme } from "./theme-provider";
 import { useSound } from "@/hooks/use-sound";
 import { useAuth } from "@/hooks/use-auth";
@@ -67,6 +67,12 @@ export function Header({ rightSlot }: HeaderProps) {
             <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer inline-flex items-center gap-1">
               <Code2 className="h-3 w-3" />
               API
+            </span>
+          </Link>
+          <Link href="/status">
+            <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer inline-flex items-center gap-1">
+              <Activity className="h-3 w-3" />
+              Status
             </span>
           </Link>
         </nav>

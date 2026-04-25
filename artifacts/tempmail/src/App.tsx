@@ -15,6 +15,7 @@ import DashboardPage from "@/pages/dashboard";
 import AdminPage from "@/pages/admin";
 import DeveloperPage from "@/pages/developer";
 import ApiDocsPage from "@/pages/api-docs";
+import StatusPage from "@/pages/status";
 import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/api-docs" component={ApiDocsPage} />
       <Route path="/docs" component={ApiDocsPage} />
+      <Route path="/status" component={StatusPage} />
       <Route path="/tentang" component={LandingPage} />
       <Route path="/verify-email" component={VerifyEmailPage} />
       <Route component={NotFound} />
