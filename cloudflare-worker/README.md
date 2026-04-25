@@ -22,9 +22,11 @@ Folder ini berisi kode **Cloudflare Email Worker** yang menjembatani **Cloudflar
 | File | Cocok untuk | Kelebihan | Batasan |
 |------|-------------|-----------|---------|
 | **`email-worker-simple.js`** | Deploy via **browser** (Cloudflare Dashboard editor) | Tidak butuh npm/Wrangler. Bisa langsung copy-paste ke editor web. | Body email dikirim **mentah** (raw MIME). Subject diambil dari header. HTML dan attachment tidak ter-parse otomatis. |
-| **`email-worker.js`** | Deploy via **Wrangler CLI** (laptop atau Termux) | Pakai library `postal-mime` → parse HTML, text, dan encoding non-ASCII dengan benar. | Butuh `npm install postal-mime` dan deploy via Wrangler. |
+| **`email-worker.js`** | Deploy via **Wrangler CLI** (laptop atau Termux) | Pakai library `postal-mime` → parse HTML, text, subject, dan encoding non-ASCII (UTF-8, Quoted-Printable, base64) dengan benar. | Butuh `npm install postal-mime` dan deploy via Wrangler. |
 
-> **Saran:** mulai dengan **versi simple** untuk uji koneksi. Setelah jalan, baru upgrade ke versi lengkap kalau butuh dukungan HTML/attachment yang rapi.
+> **Saran:** mulai dengan **versi simple** untuk uji koneksi. Setelah jalan, baru upgrade ke versi lengkap kalau butuh tampilan HTML email yang rapi.
+>
+> **Catatan tentang attachment:** kedua versi worker saat ini **tidak menyimpan attachment** ke TempMail. Backend menyimpan email dengan flag `hasAttachments=false` apapun isinya. Versi lengkap unggul di parsing body/subject/encoding, bukan di pengelolaan lampiran.
 
 ---
 
@@ -231,8 +233,7 @@ Alamat email sudah kedaluwarsa (default 10 menit; bisa diperpanjang sampai 24 ja
 
 ## Catatan Tambahan
 
-- **Email Routing gratis** — tidak ada limit jumlah email harian dari Cloudflare.
-- **Workers Free Plan** — 100.000 request/hari, lebih dari cukup untuk pemakaian normal.
+- **Email Routing & Workers Free Plan** — pada saat dokumen ini ditulis, Cloudflare menyediakan Email Routing tanpa biaya dan Workers Free Plan dengan kuota harian gratis yang biasanya cukup untuk pemakaian normal. **Cek halaman pricing Cloudflare terbaru** untuk angka pasti — kuota dan harga bisa berubah sewaktu-waktu.
 - Worker tidak menyimpan email apapun — Cloudflare hanya forward, semua data tersimpan di database TempMail kamu.
 - Untuk multi-domain: ulangi Langkah 4 untuk setiap domain. Worker yang sama bisa dipakai untuk semua domain.
 - Detail format webhook (header & body schema) ada di Admin Panel → bagian **Referensi Webhook Endpoint**.
