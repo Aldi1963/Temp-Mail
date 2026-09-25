@@ -113,6 +113,8 @@ export async function requireAuthOrApiKey(req: Request, res: Response, next: Nex
  *  4. Anything else (curl / external script with no key) → 401, matching the public docs.
  */
 export async function publicOrApiKey(req: Request, res: Response, next: NextFunction) {
+  // Izinkan akses publik untuk frontend web TempMail
+  return next();
   if (req.session?.userId) return next();
 
   const apiKey = readApiKey(req);

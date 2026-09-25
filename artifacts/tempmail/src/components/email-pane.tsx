@@ -414,17 +414,17 @@ export function EmailPane({
               <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Email</span>
             </div>
 
-            {/* Email display — truncated, click to copy */}
+            {/* Email display — Full width */}
             {activeEmail ? (
               <button
-                className="flex-1 min-w-0 px-3 h-full text-left hover:bg-muted/30 transition-colors group"
+                className="flex-1 min-w-0 px-3 h-full text-left hover:bg-muted/30 transition-colors group flex items-center"
                 onClick={copyToClipboard}
                 data-testid="text-active-email"
                 title="Klik untuk menyalin"
               >
-                <span className="block text-sm font-mono font-medium truncate">
+                <span className="text-sm font-mono font-bold tracking-tight text-foreground truncate select-all">
                   <span className="text-primary">{activeEmail.split("@")[0]}</span>
-                  <span className="text-muted-foreground text-xs">@{activeEmail.split("@")[1]}</span>
+                  <span className="text-muted-foreground">@{activeEmail.split("@")[1]}</span>
                 </span>
               </button>
             ) : (
@@ -437,27 +437,27 @@ export function EmailPane({
             <button
               onClick={copyToClipboard}
               disabled={!activeEmail}
-              className="px-2 h-full flex items-center text-muted-foreground hover:text-primary transition-colors shrink-0"
-              title="Salin"
+              className="px-3.5 h-full flex items-center text-muted-foreground hover:text-primary transition-colors shrink-0 border-l border-border/60 bg-muted/20"
+              title="Salin Alamat"
               data-testid="button-copy-email"
             >
               {copied
-                ? <Check className="h-3.5 w-3.5 text-green-500" />
-                : <Copy className="h-3.5 w-3.5" />
+                ? <Check className="h-4 w-4 text-green-500" />
+                : <Copy className="h-4 w-4" />
               }
             </button>
-
-            {/* Generate button — in-row, right side */}
-            <button
-              onClick={() => handleGenerate()}
-              disabled={isGenerating}
-              className="flex items-center gap-1.5 px-4 h-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shrink-0 disabled:opacity-60"
-              data-testid="button-generate-email"
-            >
-              <Zap className={`h-3.5 w-3.5 ${isGenerating ? "animate-spin" : ""}`} />
-              Generate Baru
-            </button>
           </div>
+
+          {/* Button Generate Baru — Full Width Below */}
+          <button
+            onClick={() => handleGenerate()}
+            disabled={isGenerating}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-all shadow-sm active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+            data-testid="button-generate-email"
+          >
+            <Zap className={`h-4 w-4 ${isGenerating ? "animate-spin" : ""}`} />
+            <span>Generate Email Baru</span>
+          </button>
 
           {/* Domain selector + custom username — compact row */}
           <div className="flex items-center gap-2">
