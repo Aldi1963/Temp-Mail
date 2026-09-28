@@ -7,6 +7,7 @@ import { userRouter } from "./user";
 import { developerRouter } from "./developer";
 import { webhookRouter } from "./webhook";
 import { siteRouter } from "./site";
+import { customDomainsRouter } from "./custom-domains";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,7 @@ router.use("/email", emailRouter);
 router.use("/auth", authRouter);
 router.use("/admin", adminRouter);
 router.use("/user", userRouter);
+router.use("/user/domains", customDomainsRouter);
 router.use("/developer", developerRouter);
 router.use("/webhook", webhookRouter);
 router.use("/site", siteRouter);
