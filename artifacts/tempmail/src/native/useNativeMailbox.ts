@@ -200,6 +200,20 @@ export function useNativeMailbox(isUnlocked: boolean) {
     }
   );
 
+  // Masa kedaluwarsa alamat aktif (untuk pengingat notifikasi lokal).
+  // Refetch tiap 60 detik agar jadwal ikut diperbarui setelah perpanjangan.
+  const { data: stats } = useGetEmailStats(
+    { email: activeEmail! },
+    {
+      query: {
+        queryKey: getGetEmailStatsQueryKey({ email: activeEmail! }),
+        enabled: !!activeEmail && isUnlocked,
+        refetchInterval: 60_000,
+      },
+    }
+  );
+  const activeExpiresAt = stats?.expiresAt ?? null;
+
   // Pesan baru: bunyi + getar + toast, plus salin OTP otomatis.
   // Dilewati untuk alamat yang dimute di settings.notifyOff.
   useEffect(() => {
@@ -263,6 +277,24 @@ export function useNativeMailbox(isUnlocked: boolean) {
   useEffect(() => {
     if (activeEmail) void pushWidgetData(activeEmail, unreadCount);
   }, [activeEmail, unreadCount]);
+
+  // Pengingat kadaluarsa via notifikasi lokal: batalkan lalu jadwal ulang
+  // setiap alamat aktif / expiresAt berubah (termasuk setelah perpanjangan).
+  useEffect(() => {
+    if (!activeEmail) {
+      void cancelExpiryReminders();
+      return;
+    }
+    if (!activeExpiresAt) return;
+    let cancelled = false;
+    void (async () => {
+      await cancelExpiryReminders();
+      if (!cancelled) await scheduleExpiryReminders(activeEmail, activeExpiresAt);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEmail, activeExpiresAt]);
 
   const refreshInbox = useCallback(() => {
     if (!activeEmail) return;
