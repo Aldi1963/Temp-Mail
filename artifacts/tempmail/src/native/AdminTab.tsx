@@ -13,8 +13,9 @@ import {
 import { cn } from "@/lib/utils";
 import { nativeFetch } from "./api";
 import { ErrorBox, LoadingBlock } from "./AdminShared";
-// Komponen seksi (Pengguna, Domain, Broadcast, Server, Maintenance)
-// ditambahkan pada commit bagian 2 & 3.
+import { AdminUsers } from "./AdminUsers";
+import { AdminDomains } from "./AdminDomains";
+// Komponen seksi Broadcast, Server, Maintenance ditambahkan pada commit bagian 3.
 
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -245,8 +246,8 @@ export function AdminTab() {
       </div>
 
       {section === "dashboard" && <AdminDashboard />}
-      {section === "users" && <ComingSoon label="Pengguna" />}
-      {section === "domains" && <ComingSoon label="Domain" />}
+      {section === "users" && <AdminUsers />}
+      {section === "domains" && <AdminDomains />}
       {section === "broadcast" && <ComingSoon label="Broadcast" />}
       {section === "server" && <ComingSoon label="Server" />}
       {section === "maintenance" && <ComingSoon label="Maintenance" />}
