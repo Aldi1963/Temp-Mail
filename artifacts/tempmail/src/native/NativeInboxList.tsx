@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
-import { Check, Copy, Inbox, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, Inbox, Search, Trash2, X } from "lucide-react";
+import { getGetInboxQueryKey } from "@aldi1963/temp-mail-api-client";
 import { cn } from "@/lib/utils";
+import { nativeFetch, manageHeaders } from "./api";
 import { buzz, cleanSnippet, extractQuickOtp, senderMeta, timeAgo } from "./otp";
 
 export interface NativeMsg {
@@ -25,13 +28,25 @@ const FILTERS: { key: MsgFilter; label: string }[] = [
 interface Props {
   messages: NativeMsg[];
   loading: boolean;
+  email: string;
   onSelect: (id: string) => void;
 }
 
-export function NativeInboxList({ messages, loading, onSelect }: Props) {
+export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<MsgFilter>("semua");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const deleteTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (deleteTimer.current) window.clearTimeout(deleteTimer.current);
+    },
+    []
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -58,6 +73,31 @@ export function NativeInboxList({ messages, loading, onSelect }: Props) {
     buzz(15);
     setCopiedId(id);
     window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500);
+  };
+
+  // Hapus pesan per item — two-tap confirm inline, tanpa popup.
+  const tryDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      if (deleteTimer.current) window.clearTimeout(deleteTimer.current);
+      deleteTimer.current = window.setTimeout(() => setConfirmDeleteId(null), 3000);
+      return;
+    }
+    setConfirmDeleteId(null);
+    if (deleteTimer.current) window.clearTimeout(deleteTimer.current);
+    setDeletingId(id);
+    try {
+      await nativeFetch(
+        `/api/email/message?id=${encodeURIComponent(id)}&email=${encodeURIComponent(email)}`,
+        { method: "DELETE", headers: manageHeaders(email) }
+      );
+      queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email }) });
+    } catch {
+      /* abaikan — daftar akan tetap tampil */
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (loading && messages.length === 0) {
@@ -137,6 +177,7 @@ export function NativeInboxList({ messages, loading, onSelect }: Props) {
         const meta = senderMeta(m.from);
         const otp = extractQuickOtp(`${m.subject ?? ""} ${m.preview ?? ""}`);
         const unread = !m.isRead;
+        const armed = confirmDeleteId === m.id;
         return (
           <button
             key={m.id}
@@ -189,7 +230,28 @@ export function NativeInboxList({ messages, loading, onSelect }: Props) {
                 )}
               </span>
             </span>
-            {unread && <span className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />}
+            <span className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+              {unread && <span className="w-2 h-2 rounded-full bg-primary" />}
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={armed ? "Ketuk lagi untuk menghapus" : "Hapus pesan"}
+                onClick={(e) => void tryDelete(e, m.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    void tryDelete(e as unknown as React.MouseEvent, m.id);
+                }}
+                className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center active:bg-muted",
+                  armed ? "text-destructive bg-destructive/10" : "text-muted-foreground/60"
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </span>
+              {deletingId === m.id && (
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-primary animate-spin" />
+              )}
+            </span>
           </button>
         );
         }))}
