@@ -8,6 +8,7 @@ import { developerRouter } from "./developer";
 import { webhookRouter } from "./webhook";
 import { siteRouter } from "./site";
 import { customDomainsRouter } from "./custom-domains";
+import { pushRouter } from "./push";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/user/domains", customDomainsRouter);
 router.use("/developer", developerRouter);
 router.use("/webhook", webhookRouter);
 router.use("/site", siteRouter);
+router.use("/push", pushRouter);
 
 export default router;
