@@ -11,6 +11,7 @@ import {
   Moon,
   ShieldCheck,
   Sun,
+  Trash2,
   Zap,
   LockKeyhole,
   X,
@@ -118,6 +119,12 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       label: "Status server",
       desc: undefined as string | undefined,
       action: () => onOpenPage("status"),
+    },
+    {
+      icon: Trash2,
+      label: "Tong Sampah",
+      desc: "Pesan terhapus, bisa dikembalikan",
+      action: () => onOpenPage("trash"),
     },
     {
       icon: Info,

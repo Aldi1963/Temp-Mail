@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ShieldBan, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { MessageViewer } from "@/components/message-viewer";
 import { useGetMessage, getGetInboxQueryKey } from "@aldi1963/temp-mail-api-client";
 import { useNativeSettings } from "./settings";
@@ -99,7 +100,30 @@ export function MessagePage({ messageId, email, onBack }: Props) {
         { method: "DELETE", headers: manageHeaders(email) }
       );
       invalidate();
-      toast({ title: "Pesan dihapus" });
+      toast({
+        title: "Pesan dipindah ke sampah",
+        action: (
+          <ToastAction
+            altText="Urungkan"
+            onClick={() => {
+              nativeFetch("/api/email/message/restore", {
+                method: "POST",
+                headers: manageHeaders(email),
+                body: JSON.stringify({ id: messageId, email }),
+              })
+                .then(() => {
+                  invalidate();
+                  toast({ title: "Pesan dikembalikan" });
+                })
+                .catch(() => {
+                  toast({ title: "Gagal mengurungkan", variant: "destructive" });
+                });
+            }}
+          >
+            Urungkan
+          </ToastAction>
+        ),
+      });
       onBack();
     } catch (e) {
       toast({
@@ -128,7 +152,7 @@ export function MessagePage({ messageId, email, onBack }: Props) {
       )
         .then(() => {
           invalidate();
-          toast({ title: "Pesan OTP dihapus otomatis" });
+          toast({ title: "Pesan OTP dihapus otomatis", description: "Masuk tong sampah, bisa dikembalikan." });
         })
         .catch(() => {});
     }

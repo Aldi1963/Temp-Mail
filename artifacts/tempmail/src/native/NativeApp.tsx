@@ -18,14 +18,17 @@ import { NativeApiDocsPage } from "./NativeApiDocsPage";
 import { NativeStatusPage } from "./NativeStatusPage";
 import { NativeAboutPage } from "./NativeAboutPage";
 import { NativePrivacyPage } from "./NativePrivacyPage";
+import { TrashPage } from "./TrashPage";
+import { initPushNotifications, refreshPushRegistration } from "./push";
 
-export type NativePage = "api-docs" | "status" | "tentang" | "privacy";
+export type NativePage = "api-docs" | "status" | "tentang" | "privacy" | "trash";
 
 const PAGE_TITLES: Record<NativePage, string> = {
   "api-docs": "Dokumentasi API",
   status: "Status Server",
   tentang: "Tentang",
   privacy: "Privasi",
+  trash: "Tong Sampah",
 };
 
 // Pola scroll: dokumen yang scroll (bukan container bersarang) agar mulus
@@ -82,9 +85,41 @@ function NativeAppInner() {
   const [loginOpen, setLoginOpen] = useState(false);
   const { toast } = useToast();
   const loginToastShown = useRef(false);
+  const mailboxRef = useRef(mailbox);
+  mailboxRef.current = mailbox;
+  // Dilewati sekali saat alamat aktif berganti akibat ketukan notifikasi,
+  // supaya pembaca pesan yang baru dibuka tidak langsung ditutup.
+  const notifNavGuard = useRef(false);
 
   useEffect(() => {
+    if (notifNavGuard.current) {
+      notifNavGuard.current = false;
+      return;
+    }
     setMessageId(null);
+  }, [mailbox.activeEmail]);
+
+  // Push notification: inisialisasi sekali saat aplikasi dibuka.
+  // Graceful: bila plugin/FCM belum tersedia, aplikasi tetap jalan normal.
+  useEffect(() => {
+    void initPushNotifications({
+      getActiveEmail: () => mailboxRef.current.activeEmail,
+      onOpenMessage: (id, email) => {
+        notifNavGuard.current = true;
+        mailboxRef.current.setActiveEmail(email);
+        setTab("beranda");
+        setMessageId(id);
+      },
+    });
+  }, []);
+
+  // Token push didaftarkan dengan alamat aktif; kirim ulang bila alamat berganti.
+  useEffect(() => {
+    if (!mailbox.activeEmail) return;
+    const t = window.setTimeout(() => {
+      void refreshPushRegistration(mailbox.activeEmail);
+    }, 3000);
+    return () => window.clearTimeout(t);
   }, [mailbox.activeEmail]);
 
   // Selesai login native → toast sekali lalu kembali ke tab Lainnya.
@@ -181,6 +216,7 @@ function NativeAppInner() {
             {page === "status" && <NativeStatusPage />}
             {page === "tentang" && <NativeAboutPage />}
             {page === "privacy" && <NativePrivacyPage />}
+            {page === "trash" && mailbox.activeEmail && <TrashPage email={mailbox.activeEmail} />}
           </SubPage>
         )}
       </div>
