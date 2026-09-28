@@ -198,7 +198,10 @@ function parseReadableEmail(raw: string): { text: string; html: string | null } 
   function cleanPart(partStr: string): string {
     const bodyStart = partStr.indexOf("\r\n\r\n") !== -1 ? partStr.indexOf("\r\n\r\n") + 4 : partStr.indexOf("\n\n") !== -1 ? partStr.indexOf("\n\n") + 2 : -1;
     let body = bodyStart !== -1 ? partStr.slice(bodyStart) : partStr;
-    body = body.replace(/--[^\r\n-]+--?[\r\n]*/g, "").trim();
+    // Hanya hapus baris delimiter boundary MIME (RFC 2046). Regex lama
+    // /--[^\r\n-]+--?/ ikut memakan penutup komentar HTML ("-->")
+    // beserta markup setelahnya sehingga email MJML tampil blank.
+    body = body.replace(/(?:\r\n|\n|^)--[A-Za-z0-9'()+_,./:=?\- ]+(?:--)?(?=\r\n|\n|$)/g, "").trim();
     return decodeQp(body);
   }
 

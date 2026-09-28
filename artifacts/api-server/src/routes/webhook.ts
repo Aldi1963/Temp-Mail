@@ -66,8 +66,12 @@ function parseMimeContent(raw: string): { text: string; html: string | null } {
   function cleanPart(partStr: string): string {
     const bodyStart = partStr.indexOf("\r\n\r\n") !== -1 ? partStr.indexOf("\r\n\r\n") + 4 : partStr.indexOf("\n\n") !== -1 ? partStr.indexOf("\n\n") + 2 : -1;
     let body = bodyStart !== -1 ? partStr.slice(bodyStart) : partStr;
-    // Strip trailing boundary markers
-    body = body.replace(/--[^\r\n-]+--?[\r\n]*/g, "").trim();
+    // Strip trailing MIME boundary delimiter lines only (RFC 2046: "--" at a
+    // line start followed by boundary chars). The previous /--[^\r\n-]+--?/
+    // also matched HTML comment closers ("-->") and ate the markup after them
+    // up to the next "-", leaving unclosed <!--[if mso]> comments that
+    // blanked MJML/HTML emails in the viewer.
+    body = body.replace(/(?:\r\n|\n|^)--[A-Za-z0-9'()+_,./:=?\- ]+(?:--)?(?=\r\n|\n|$)/g, "").trim();
     // Strip leading Content-Type or headers if not stripped
     body = body.replace(/^-?Content-Type:[^\n\r]*[\r\n]*/gim, "");
     body = body.replace(/^Content-Transfer-Encoding:[^\n\r]*[\r\n]*/gim, "");
