@@ -54,9 +54,11 @@ export const messagesTable = pgTable("messages", {
   attachmentsJson: text("attachments_json").notNull().default("[]"),
   receivedAt: timestamp("received_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+  deletedAt: timestamp("deleted_at"),
 }, (t) => [
   index("idx_messages_email").on(t.email),
   index("idx_messages_expires_at").on(t.expiresAt),
+  index("idx_messages_deleted_at").on(t.deletedAt),
 ]);
 
 export const blockedSendersTable = pgTable("blocked_senders", {
@@ -120,6 +122,16 @@ export const customDomainsTable = pgTable("custom_domains", {
 }, (t) => [index("idx_custom_domains_user_id").on(t.userId)]);
 
 export type CustomDomain = typeof customDomainsTable.$inferSelect;
+
+export const pushTokensTable = pgTable("push_tokens", {
+  token: text("token").primaryKey(),
+  email: text("email"),
+  userId: integer("user_id"),
+  platform: text("platform").notNull().default("android"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("idx_push_tokens_email").on(t.email)]);
+
+export type PushToken = typeof pushTokensTable.$inferSelect;
 
 export const activityLogsTable = pgTable("activity_logs", {
   id: serial("id").primaryKey(),

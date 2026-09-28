@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable } from "@workspace/db";
-import { eq, count, desc, gte, gt, sql, and, lt, isNotNull } from "drizzle-orm";
+import { eq, count, desc, gte, gt, sql, and, lt, isNotNull, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
 import { promisify } from "util";
@@ -109,7 +109,7 @@ router.get("/users", async (_req, res) => {
     .select({ userId: emailAddressesTable.userId, count: count() })
     .from(messagesTable)
     .innerJoin(emailAddressesTable, eq(messagesTable.email, emailAddressesTable.email))
-    .where(isNotNull(emailAddressesTable.userId))
+    .where(and(isNotNull(emailAddressesTable.userId), isNull(messagesTable.deletedAt)))
     .groupBy(emailAddressesTable.userId);
   const eMap = new Map(emailCounts.map((r) => [r.userId, Number(r.count)]));
   const mMap = new Map(msgCounts.map((r) => [r.userId, Number(r.count)]));

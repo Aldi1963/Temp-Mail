@@ -9,10 +9,11 @@ import {
   usersTable,
   customDomainsTable,
 } from "@workspace/db";
-import { eq, inArray, desc, and } from "drizzle-orm";
+import { eq, inArray, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
 import { triggerWebhooksForEmail } from "./developer.js";
 import { secretMatches, findCustomDomainBySecret } from "./custom-domains.js";
+import { notifyNewMessagePush } from "../lib/fcm.js";
 
 const router = Router();
 
@@ -257,6 +258,14 @@ router.post("/inbound-email", async (req, res) => {
     preview,
     receivedAt: now.toISOString(),
   });
+
+  // Push notification ke aplikasi Android (FCM) — fire-and-forget,
+  // gagal total = dilewati diam-diam (lihat lib/fcm.ts).
+  try {
+    notifyNewMessagePush(toEmail, { from: cleanFrom, subject: subjectStr, messageId });
+  } catch {
+    /* non-fatal */
+  }
 
   if (addr.userId) {
     try {
@@ -589,7 +598,7 @@ router.post("/telegram", async (req, res) => {
     // Action: Read message
     if (data.startsWith("read_")) {
       const msgId = data.replace("read_", "");
-      const [m] = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
+      const [m] = await db.select().from(messagesTable).where(and(eq(messagesTable.id, msgId), isNull(messagesTable.deletedAt))).limit(1);
       if (m) {
         const rawContent = m.textBody || m.preview || m.htmlBody || "Isi email kosong";
         const cleanContent = getCleanReadableText(rawContent);
@@ -613,11 +622,11 @@ router.post("/telegram", async (req, res) => {
         const userAddrs = await db.select({ email: emailAddressesTable.email }).from(emailAddressesTable).where(eq(emailAddressesTable.userId, u.id));
         const emailList = userAddrs.map(a => a.email);
         if (emailList.length > 0) {
-          messages = await db.select().from(messagesTable).where(inArray(messagesTable.email, emailList)).orderBy(desc(messagesTable.receivedAt)).limit(5);
+          messages = await db.select().from(messagesTable).where(and(inArray(messagesTable.email, emailList), isNull(messagesTable.deletedAt))).orderBy(desc(messagesTable.receivedAt)).limit(5);
         }
       }
       if (messages.length === 0) {
-        messages = await db.select().from(messagesTable).orderBy(desc(messagesTable.receivedAt)).limit(5);
+        messages = await db.select().from(messagesTable).where(isNull(messagesTable.deletedAt)).orderBy(desc(messagesTable.receivedAt)).limit(5);
       }
       if (messages.length === 0) {
         await sendTg(cbChatId, `📭 Kotak masuk masih kosong.`, inboxHubKeyboard);
@@ -646,7 +655,7 @@ router.post("/telegram", async (req, res) => {
     // Action: Delete message
     if (data.startsWith("del_")) {
       const msgId = data.replace("del_", "");
-      await db.delete(messagesTable).where(eq(messagesTable.id, msgId));
+      await db.delete(messagesTable).where(and(eq(messagesTable.id, msgId), isNull(messagesTable.deletedAt)));
       if (cbChatId && cbMsgId) {
         await editTg(cbChatId, cbMsgId, `🗑️ *Pesan email ini telah dihapus.*`);
       }
@@ -699,7 +708,7 @@ router.post("/telegram", async (req, res) => {
       const list = emailListCache.get(String(cbChatId)) || [];
       const email = list[idx];
       if (!email) return;
-      const msgs = await db.select().from(messagesTable).where(eq(messagesTable.email, email)).orderBy(desc(messagesTable.receivedAt)).limit(5);
+      const msgs = await db.select().from(messagesTable).where(and(eq(messagesTable.email, email), isNull(messagesTable.deletedAt))).orderBy(desc(messagesTable.receivedAt)).limit(5);
       if (msgs.length === 0) {
         await sendTg(cbChatId, `📭 Belum ada pesan di\n\`${email}\``, inboxHubKeyboard);
         return;
@@ -788,7 +797,7 @@ router.post("/telegram", async (req, res) => {
       if (addr) userEmail = addr.email;
     }
 
-    const [latestMsg] = await db.select().from(messagesTable).orderBy(desc(messagesTable.receivedAt)).limit(1);
+    const [latestMsg] = await db.select().from(messagesTable).where(isNull(messagesTable.deletedAt)).orderBy(desc(messagesTable.receivedAt)).limit(1);
     if (latestMsg) {
       const match = (latestMsg.subject + " " + latestMsg.preview + " " + (latestMsg.textBody || "")).match(/\b(?:code|kode|otp|pin|verifikasi|token|verification)[^\d]{1,20}(\d{4,8})\b/i)
         || (latestMsg.subject + " " + latestMsg.preview).match(/\b(\d{6})\b/);
@@ -929,7 +938,7 @@ router.post("/telegram", async (req, res) => {
     }
     const emails = addrs.map(a => a.email);
     emailListCache.set(strChatId, emails);
-    const msgRows = await db.select({ email: messagesTable.email, isRead: messagesTable.isRead }).from(messagesTable).where(inArray(messagesTable.email, emails));
+    const msgRows = await db.select({ email: messagesTable.email, isRead: messagesTable.isRead }).from(messagesTable).where(and(inArray(messagesTable.email, emails), isNull(messagesTable.deletedAt)));
     const countMap: Record<string, number> = {};
     const unreadMap: Record<string, number> = {};
     for (const r of msgRows) {
@@ -976,7 +985,7 @@ router.post("/telegram", async (req, res) => {
       const addrs = await db.select({ email: emailAddressesTable.email }).from(emailAddressesTable).where(eq(emailAddressesTable.userId, u.id));
       addrCount = addrs.length;
       if (addrCount > 0) {
-        const msgs = await db.select({ subject: messagesTable.subject, preview: messagesTable.preview, textBody: messagesTable.textBody }).from(messagesTable).where(inArray(messagesTable.email, addrs.map(a => a.email)));
+        const msgs = await db.select({ subject: messagesTable.subject, preview: messagesTable.preview, textBody: messagesTable.textBody }).from(messagesTable).where(and(inArray(messagesTable.email, addrs.map(a => a.email)), isNull(messagesTable.deletedAt)));
         msgCount = msgs.length;
         const otpRe = /\b(?:code|kode|otp|pin|verifikasi|token|verification)[^\d]{1,20}(\d{4,8})\b/i;
         otpCount = msgs.filter(m => otpRe.test(`${m.subject} ${m.preview} ${m.textBody || ""}`)).length;
@@ -1154,12 +1163,12 @@ router.post("/telegram", async (req, res) => {
         const userAddrs = await db.select({ email: emailAddressesTable.email }).from(emailAddressesTable).where(eq(emailAddressesTable.userId, u.id));
         const addrList = userAddrs.map(a => a.email);
         if (addrList.length > 0) {
-          messages = await db.select().from(messagesTable).where(inArray(messagesTable.email, addrList)).orderBy(desc(messagesTable.receivedAt)).limit(5);
+          messages = await db.select().from(messagesTable).where(and(inArray(messagesTable.email, addrList), isNull(messagesTable.deletedAt))).orderBy(desc(messagesTable.receivedAt)).limit(5);
         }
       }
 
       if (messages.length === 0) {
-        messages = await db.select().from(messagesTable).orderBy(desc(messagesTable.receivedAt)).limit(3);
+        messages = await db.select().from(messagesTable).where(isNull(messagesTable.deletedAt)).orderBy(desc(messagesTable.receivedAt)).limit(3);
       }
 
       let foundOtp: { code: string; subject: string; from: string } | null = null;
@@ -1192,12 +1201,12 @@ router.post("/telegram", async (req, res) => {
         const userAddrs = await db.select({ email: emailAddressesTable.email }).from(emailAddressesTable).where(eq(emailAddressesTable.userId, u.id));
         const addrList = userAddrs.map(a => a.email);
         if (addrList.length > 0) {
-          messages = await db.select().from(messagesTable).where(inArray(messagesTable.email, addrList)).orderBy(desc(messagesTable.receivedAt)).limit(5);
+          messages = await db.select().from(messagesTable).where(and(inArray(messagesTable.email, addrList), isNull(messagesTable.deletedAt))).orderBy(desc(messagesTable.receivedAt)).limit(5);
         }
       }
 
       if (messages.length === 0) {
-        messages = await db.select().from(messagesTable).orderBy(desc(messagesTable.receivedAt)).limit(5);
+        messages = await db.select().from(messagesTable).where(isNull(messagesTable.deletedAt)).orderBy(desc(messagesTable.receivedAt)).limit(5);
       }
 
       if (messages.length === 0) {

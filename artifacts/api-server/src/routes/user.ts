@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { emailAddressesTable, messagesTable, activityLogsTable, usersTable } from "@workspace/db";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, desc, count, and, isNull } from "drizzle-orm";
 import { createHash, timingSafeEqual } from "crypto";
 import { requireAuth, requireAuthOrApiKey } from "../lib/auth.js";
 
@@ -19,7 +19,7 @@ router.get("/emails", async (req, res) => {
 
   const result = await Promise.all(
     emails.map(async (e) => {
-      const [msgCount] = await db.select({ count: count() }).from(messagesTable).where(eq(messagesTable.email, e.email));
+      const [msgCount] = await db.select({ count: count() }).from(messagesTable).where(and(eq(messagesTable.email, e.email), isNull(messagesTable.deletedAt)));
       return {
         email: e.email,
         domain: e.domain,
@@ -41,7 +41,7 @@ router.get("/stats", async (req, res) => {
 
   let totalMessages = 0;
   for (const e of emails) {
-    const [row] = await db.select({ count: count() }).from(messagesTable).where(eq(messagesTable.email, e.email));
+    const [row] = await db.select({ count: count() }).from(messagesTable).where(and(eq(messagesTable.email, e.email), isNull(messagesTable.deletedAt)));
     totalMessages += Number(row.count);
   }
 

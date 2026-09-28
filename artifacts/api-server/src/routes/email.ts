@@ -1,7 +1,7 @@
 import { Router, Request } from "express";
 import { db } from "@workspace/db";
 import { emailAddressesTable, messagesTable, blockedSendersTable, siteSettingsTable, customDomainsTable } from "@workspace/db";
-import { eq, and, desc, lt } from "drizzle-orm";
+import { eq, and, desc, lt, isNull, isNotNull } from "drizzle-orm";
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { publicOrApiKey } from "../lib/auth.js";
@@ -243,7 +243,7 @@ router.get("/inbox", async (req, res) => {
   const { email } = parsed.data;
   const wantArchived = req.query.archived === "true";
   const [messages, blocked] = await Promise.all([
-    db.select().from(messagesTable).where(and(eq(messagesTable.email, email), eq(messagesTable.archived, wantArchived))).orderBy(desc(messagesTable.receivedAt)),
+    db.select().from(messagesTable).where(and(eq(messagesTable.email, email), eq(messagesTable.archived, wantArchived), isNull(messagesTable.deletedAt))).orderBy(desc(messagesTable.receivedAt)),
     db.select().from(blockedSendersTable).where(eq(blockedSendersTable.email, email)),
   ]);
 
@@ -370,7 +370,7 @@ router.get("/message", async (req, res) => {
   const results = await db
     .select()
     .from(messagesTable)
-    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)))
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNull(messagesTable.deletedAt)))
     .limit(1);
 
   if (results.length === 0) {
@@ -411,7 +411,7 @@ router.patch("/message/read", async (req, res) => {
   const results = await db
     .select()
     .from(messagesTable)
-    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)))
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNull(messagesTable.deletedAt)))
     .limit(1);
 
   if (results.length === 0) {
@@ -419,12 +419,13 @@ router.patch("/message/read", async (req, res) => {
     return;
   }
 
-  await db.update(messagesTable).set({ isRead: true }).where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)));
+  await db.update(messagesTable).set({ isRead: true }).where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNull(messagesTable.deletedAt)));
 
   res.json({ success: true, message: "Message marked as read" });
 });
 
-// Hapus satu pesan (swipe kiri ala Gmail)
+// Hapus satu pesan (swipe kiri ala Gmail) — SOFT DELETE ke tong sampah.
+// Undo: POST /message/restore. Hapus permanen: DELETE /message/permanent.
 router.delete("/message", async (req, res) => {
   const miss = missingQueryParam(req, "id", "email");
   const parsed = GetMessageQueryParams.safeParse(req.query);
@@ -446,17 +447,18 @@ router.delete("/message", async (req, res) => {
     return;
   }
 
-  const deleted = await db
-    .delete(messagesTable)
-    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)))
+  const trashed = await db
+    .update(messagesTable)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNull(messagesTable.deletedAt)))
     .returning({ id: messagesTable.id });
 
-  if (deleted.length === 0) {
+  if (trashed.length === 0) {
     res.status(404).json({ error: "Not found", message: "Message not found" });
     return;
   }
 
-  res.json({ success: true, message: "Message deleted" });
+  res.json({ success: true, message: "Message moved to trash" });
 });
 
 // Arsip / batal arsip satu pesan (swipe kanan ala Gmail)
@@ -483,7 +485,7 @@ router.patch("/message/archive", async (req, res) => {
   const updated = await db
     .update(messagesTable)
     .set({ archived })
-    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)))
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNull(messagesTable.deletedAt)))
     .returning({ id: messagesTable.id });
 
   if (updated.length === 0) {
@@ -492,6 +494,120 @@ router.patch("/message/archive", async (req, res) => {
   }
 
   res.json({ success: true, archived, message: archived ? "Message archived" : "Message unarchived" });
+});
+
+// Tong sampah: daftar pesan yang dihapus (soft-delete), milik alamat.
+// Hanya pesan dengan deleted_at terisi; urut dari yang paling baru dihapus.
+router.get("/trash", async (req, res) => {
+  const miss = missingQueryParam(req, "email");
+  const parsed = GetInboxQueryParams.safeParse(req.query);
+  if (miss || !parsed.success) {
+    res.status(400).json({ error: "Bad request", message: `${miss ?? "email"} is required` });
+    return;
+  }
+
+  const { email } = parsed.data;
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
+  const messages = await db
+    .select()
+    .from(messagesTable)
+    .where(and(eq(messagesTable.email, email), isNotNull(messagesTable.deletedAt)))
+    .orderBy(desc(messagesTable.deletedAt));
+
+  const summaries = messages.map((m) => ({
+    id: m.id,
+    from: m.fromAddress,
+    subject: m.subject,
+    preview: m.preview,
+    receivedAt: m.receivedAt.toISOString(),
+    deletedAt: m.deletedAt?.toISOString() ?? null,
+    isRead: m.isRead,
+    hasAttachments: m.hasAttachments,
+    archived: m.archived,
+  }));
+
+  res.json({ email, messages: summaries, total: summaries.length });
+});
+
+// Undo hapus: kembalikan pesan dari tong sampah ke kotak masuk.
+router.post("/message/restore", async (req, res) => {
+  const body = (req.body ?? {}) as { id?: unknown; email?: unknown };
+  if (typeof body.id !== "string" || !body.id || typeof body.email !== "string" || !body.email) {
+    res.status(400).json({ error: "Bad request", message: "id and email are required" });
+    return;
+  }
+
+  const { id, email } = body as { id: string; email: string };
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
+  const restored = await db
+    .update(messagesTable)
+    .set({ deletedAt: null })
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNotNull(messagesTable.deletedAt)))
+    .returning({ id: messagesTable.id });
+
+  if (restored.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Message not found in trash" });
+    return;
+  }
+
+  res.json({ success: true, message: "Message restored" });
+});
+
+// Hapus permanen satu pesan DARI TONG SAMPAH (tidak bisa undo).
+router.delete("/message/permanent", async (req, res) => {
+  const miss = missingQueryParam(req, "id", "email");
+  const parsed = GetMessageQueryParams.safeParse(req.query);
+  if (miss || !parsed.success || !parsed.data.id || !parsed.data.email) {
+    res.status(400).json({ error: "Bad request", message: "id and email are required" });
+    return;
+  }
+
+  const { id, email } = parsed.data;
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
+  const deleted = await db
+    .delete(messagesTable)
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email), isNotNull(messagesTable.deletedAt)))
+    .returning({ id: messagesTable.id });
+
+  if (deleted.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Message not found in trash" });
+    return;
+  }
+
+  res.json({ success: true, message: "Message permanently deleted" });
 });
 
 router.delete("/reset", async (req, res) => {
@@ -582,7 +698,7 @@ router.get("/stats", async (req, res) => {
   }
 
   const addr = addrResults[0];
-  const messages = await db.select().from(messagesTable).where(eq(messagesTable.email, email));
+  const messages = await db.select().from(messagesTable).where(and(eq(messagesTable.email, email), isNull(messagesTable.deletedAt)));
   const readCount = messages.filter((m) => m.isRead).length;
   const unreadCount = messages.filter((m) => !m.isRead).length;
   const now = new Date();
