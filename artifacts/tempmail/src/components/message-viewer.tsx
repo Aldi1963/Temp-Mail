@@ -252,7 +252,7 @@ function parseReadableEmail(raw: string): { text: string; html: string | null } 
 export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) {
   const queryClient = useQueryClient();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [htmlFailed, setHtmlFailed] = useState(false);
+  const [frameHeight, setFrameHeight] = useState(450);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [otpCopied, setOtpCopied] = useState(false);
@@ -298,10 +298,8 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
         if (htmlEnd !== -1) {
           clean = clean.slice(0, htmlEnd + 7);
         }
-        // decode quoted printable
-        clean = clean
-          .replace(/=\r?\n/g, "")
-          .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+        // Backend sudah decode quoted-printable; JANGAN decode lagi di sini
+        // (decode ganda merusak URL, mis. "=45" menjadi "E").
         return clean;
       }
       return raw;
@@ -331,71 +329,59 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
     window.print();
   };
 
-  useEffect(() => {
-    setHtmlFailed(false);
-    if (parsedContent.html && iframeRef.current) {
-      try {
-        const doc = iframeRef.current.contentDocument;
-        if (!doc) throw new Error("iframe document unavailable");
-        doc.open();
-        // If html already has <!doctype html> or <html, write it directly!
-        if (parsedContent.html.toLowerCase().includes("<html") || parsedContent.html.toLowerCase().includes("<!doctype")) {
-          // Inject max-width responsive helper before </head> or at start
-          let finalHtml = parsedContent.html;
-          const responsiveStyle = `<style>
-            body { margin: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-            img, table { max-width: 100% !important; height: auto !important; }
-          </style>`;
-          if (finalHtml.includes("</head>")) {
-            finalHtml = finalHtml.replace("</head>", `${responsiveStyle}</head>`);
-          } else {
-            finalHtml = responsiveStyle + finalHtml;
-          }
-          doc.write(finalHtml);
-        } else {
-          const styledHtml = `
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                  body {
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    font-size: 14px;
-                    line-height: 1.6;
-                    margin: 8px;
-                    color: inherit;
-                    word-break: break-word;
-                  }
-                  img { max-width: 100% !important; height: auto !important; }
-                  table { max-width: 100% !important; }
-                </style>
-              </head>
-              <body>
-                ${parsedContent.html}
-              </body>
-            </html>
-          `;
-          doc.write(styledHtml);
-        }
-        doc.close();
-
-        // Auto-adjust iframe height to eliminate double scrollbar
-        const adjustHeight = () => {
-          if (iframeRef.current && doc.body) {
-            const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 250);
-            iframeRef.current.style.height = `${h + 20}px`;
-          }
-        };
-        setTimeout(adjustHeight, 150);
-        setTimeout(adjustHeight, 500);
-      } catch {
-        // doc.write gagal (mis. WebView membatasi akses): fallback ke teks.
-        setHtmlFailed(true);
+  // HTML final untuk srcDoc iframe (deklaratif — andal di WebView Android,
+  // tanpa tulis manual ke contentDocument yang gagal diam-diam di WebView).
+  const finalHtml = useMemo(() => {
+    if (!parsedContent.html) return null;
+    const responsiveStyle = `<style>
+      body { margin: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      img, table { max-width: 100% !important; height: auto !important; }
+    </style>`;
+    if (
+      parsedContent.html.toLowerCase().includes("<html") ||
+      parsedContent.html.toLowerCase().includes("<!doctype")
+    ) {
+      // Suntik style responsif sebelum </head>
+      if (parsedContent.html.includes("</head>")) {
+        return parsedContent.html.replace("</head>", `${responsiveStyle}</head>`);
       }
+      return responsiveStyle + parsedContent.html;
     }
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 8px;
+    color: inherit;
+    word-break: break-word;
+  }
+  img { max-width: 100% !important; height: auto !important; }
+  table { max-width: 100% !important; }
+</style>
+</head>
+<body>
+${parsedContent.html}
+</body>
+</html>`;
   }, [parsedContent.html]);
+
+  const handleFrameLoad = () => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc?.body) {
+        const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 250);
+        setFrameHeight(h + 20);
+      }
+    } catch {
+      // Akses contentDocument ditolak: biarkan tinggi default.
+    }
+  };
 
   const { detectedOtp, detectedVerifyUrl } = useMemo(() => {
     if (!message) return { detectedOtp: null, detectedVerifyUrl: null };
@@ -692,12 +678,15 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
       {/* Body — Renders rich email (like Gmail) if HTML is available, or clean text */}
       <ScrollArea className="flex-1 min-h-0 p-0">
         <div className="p-2 sm:p-4 min-h-[300px] bg-white text-black rounded-b-2xl">
-          {parsedContent.html && !htmlFailed ? (
+          {finalHtml ? (
             <iframe
               ref={iframeRef}
               title="Isi Pesan"
-              className="w-full min-h-[450px] border-0 block bg-white"
+              className="w-full border-0 block bg-white"
+              style={{ height: frameHeight }}
               sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={finalHtml}
+              onLoad={handleFrameLoad}
             />
           ) : (
             <div className="p-3 whitespace-pre-wrap font-sans text-sm sm:text-base leading-relaxed max-w-none select-text text-slate-800">
