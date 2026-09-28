@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, integer, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, integer, serial, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -8,6 +8,8 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("user"),
   emailVerified: boolean("email_verified").notNull().default(false),
+  telegramChatId: text("telegram_chat_id"),
+  suspended: boolean("suspended").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -31,9 +33,11 @@ export const emailAddressesTable = pgTable("email_addresses", {
   username: text("username").notNull(),
   domain: text("domain").notNull(),
   userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  manageTokenHash: text("manage_token_hash"),
+  label: text("label"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
-});
+}, (t) => [index("idx_email_addresses_expires_at").on(t.expiresAt)]);
 
 export const messagesTable = pgTable("messages", {
   id: text("id").primaryKey(),
@@ -45,11 +49,15 @@ export const messagesTable = pgTable("messages", {
   htmlBody: text("html_body"),
   preview: text("preview").notNull().default(""),
   isRead: boolean("is_read").notNull().default(false),
+  archived: boolean("archived").notNull().default(false),
   hasAttachments: boolean("has_attachments").notNull().default(false),
   attachmentsJson: text("attachments_json").notNull().default("[]"),
   receivedAt: timestamp("received_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
-});
+}, (t) => [
+  index("idx_messages_email").on(t.email),
+  index("idx_messages_expires_at").on(t.expiresAt),
+]);
 
 export const blockedSendersTable = pgTable("blocked_senders", {
   id: serial("id").primaryKey(),
@@ -67,7 +75,7 @@ export const apiKeysTable = pgTable("api_keys", {
   lastUsedAt: timestamp("last_used_at"),
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [index("idx_api_keys_key_prefix").on(t.keyPrefix)]);
 
 export const webhooksTable = pgTable("webhooks", {
   id: serial("id").primaryKey(),
@@ -89,6 +97,20 @@ export const userTwoFactorTable = pgTable("user_two_factor", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+
+export const customDomainsTable = pgTable("custom_domains", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  domain: text("domain").notNull().unique(),
+  status: text("status").notNull().default("pending"),
+  verificationToken: text("verification_token").notNull(),
+  webhookSecret: text("webhook_secret").notNull(),
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [index("idx_custom_domains_user_id").on(t.userId)]);
+
+export type CustomDomain = typeof customDomainsTable.$inferSelect;
+
 export const activityLogsTable = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
@@ -96,7 +118,7 @@ export const activityLogsTable = pgTable("activity_logs", {
   description: text("description").notNull(),
   metadata: text("metadata").notNull().default("{}"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [index("idx_activity_logs_user_id").on(t.userId)]);
 
 export type ActivityLog = typeof activityLogsTable.$inferSelect;
 
