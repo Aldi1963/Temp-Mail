@@ -68,7 +68,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
                 </>
               )}
             </div>
-            <div className="flex items-baseline gap-1.5">
+            <div className="hidden min-[400px]:flex items-baseline gap-1.5">
               <span className="font-bold text-base tracking-tight text-foreground truncate max-w-[42vw] sm:max-w-none">{siteName}</span>
               <span className="hidden sm:inline text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full leading-none">
                 GRATIS
