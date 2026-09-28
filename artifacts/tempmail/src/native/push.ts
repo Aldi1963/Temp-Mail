@@ -9,6 +9,13 @@
 import { Capacitor } from "@capacitor/core";
 import { API_BASE_URL } from "@/lib/api-base";
 
+// Set true setelah google-services.json dipasang + Firebase project dikonfigurasi.
+// Jika false, register() FCM dilewati total — memanggil register() tanpa
+// Firebase yang terinisialisasi menyebabkan NATIVE CRASH di Android
+// (IllegalStateException: Default FirebaseApp is not initialized),
+// yang tidak bisa ditangkap oleh try/catch JavaScript.
+const FIREBASE_CONFIGURED = false;
+
 interface PushCallbacks {
   getActiveEmail: () => string | null;
   onOpenMessage: (messageId: string, email: string) => void;
@@ -82,6 +89,11 @@ export async function initPushNotifications(cb: PushCallbacks): Promise<void> {
       if (messageId && email) cb.onOpenMessage(String(messageId), String(email));
     });
 
+    if (!FIREBASE_CONFIGURED) {
+      // Firebase belum dipasang: jangan panggil register() sama sekali.
+      // Izin notifikasi OS tetap diminta (UX), tapi tidak ada token FCM.
+      return;
+    }
     await pn.register().catch(() => {
       /* mis. FCM belum terkonfigurasi — tetap jalan tanpa push */
     });
