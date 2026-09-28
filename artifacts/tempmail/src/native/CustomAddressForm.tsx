@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Dices } from "lucide-react";
+import { Check, ChevronDown, Dices } from "lucide-react";
 import { useGetAvailableDomains } from "@aldi1963/temp-mail-api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,9 @@ function namaAcak(): string {
 
 /**
  * Form alamat kustom inline (gaya native, tanpa popup).
- * Domain memakai <select> native -> di Android membuka picker sistem.
+ * Domain memakai dropdown inline kustom: daftar mekar tepat di bawah baris
+ * input sebagai bagian alur halaman (mendorong konten ke bawah), bukan
+ * dialog sistem dan bukan overlay.
  * Dipakai di hero Beranda dan di tab Alamat Saya.
  */
 export function CustomAddressForm({
@@ -35,6 +37,7 @@ export function CustomAddressForm({
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
+  const [open, setOpen] = useState(false);
 
   const { data: domainsData } = useGetAvailableDomains();
   const domains: string[] = (domainsData?.domains as string[] | undefined) ?? [];
@@ -45,6 +48,11 @@ export function CustomAddressForm({
 
   const efektif = domain || domains[0] || "";
 
+  const pilihDomain = (d: string) => {
+    setDomain(d);
+    setOpen(false);
+  };
+
   const create = () => {
     const clean = name.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
     if (!clean) {
@@ -53,6 +61,7 @@ export function CustomAddressForm({
     }
     void mailbox.generateEmail(efektif || undefined, clean).then(() => {
       setName("");
+      setOpen(false);
       onDone?.();
     });
   };
@@ -79,28 +88,48 @@ export function CustomAddressForm({
         >
           <Dices className="h-[18px] w-[18px]" />
         </button>
-        <div className="relative shrink-0 max-w-[44%] border-l border-border bg-muted/50 flex items-center">
-          {domains.length > 0 ? (
-            <>
-              <select
-                value={efektif}
-                onChange={(e) => setDomain(e.target.value)}
-                aria-label="Pilih domain"
-                className="h-full w-full appearance-none bg-transparent pl-2.5 pr-7 py-2.5 text-[13px] font-bold text-foreground outline-none"
-              >
-                {domains.map((d) => (
-                  <option key={d} value={d}>
-                    @{d}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="h-4 w-4 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-            </>
-          ) : (
-            <span className="px-3 py-2.5 text-[13px] text-muted-foreground">@…</span>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Pilih domain"
+          aria-expanded={open}
+          disabled={domains.length === 0}
+          className="shrink-0 max-w-[46%] border-l border-border bg-muted/50 flex items-center gap-1 pl-2.5 pr-2 py-2.5 text-[13px] font-bold disabled:opacity-70"
+        >
+          <span className="truncate">{efektif ? `@${efektif}` : "@…"}</span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-180"
+            )}
+          />
+        </button>
       </div>
+      {open && domains.length > 0 && (
+        <div className="mt-2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+          <ul className="py-1">
+            {domains.map((d) => {
+              const aktif = d === efektif;
+              return (
+                <li key={d}>
+                  <button
+                    type="button"
+                    onClick={() => pilihDomain(d)}
+                    aria-pressed={aktif}
+                    className={cn(
+                      "w-full flex items-center justify-between gap-2 px-3 py-2.5 text-[14px] text-left active:bg-muted",
+                      aktif ? "font-bold text-primary" : "text-foreground"
+                    )}
+                  >
+                    <span className="truncate">@{d}</span>
+                    {aktif && <Check className="h-[18px] w-[18px] shrink-0" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       <button
         type="button"
         onClick={create}
