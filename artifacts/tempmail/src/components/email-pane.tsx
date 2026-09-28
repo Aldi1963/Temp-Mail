@@ -295,7 +295,7 @@ export function EmailPane({
     }
   };
 
-  const [customModalOpen, setCustomModalOpen] = useState(false);
+  const [customFormOpen, setCustomFormOpen] = useState(false);
   const [customUsernameOnly, setCustomUsernameOnly] = useState("");
   const [customDomainChoice, setCustomDomainChoice] = useState<string>("");
   const [domainDropOpen, setDomainDropOpen] = useState(false);
@@ -320,14 +320,19 @@ export function EmailPane({
     };
   }, [domainDropOpen]);
 
-  const openCustomModal = () => {
+  const toggleCustomForm = () => {
+    if (customFormOpen) {
+      setDomainDropOpen(false);
+      setCustomFormOpen(false);
+      return;
+    }
     setDomainDropOpen(false);
     setCustomUsernameOnly("");
     setCustomDomainChoice(selectedDomain || (domains.length > 0 ? domains[0] : "bakmi.my.id"));
-    setCustomModalOpen(true);
+    setCustomFormOpen(true);
   };
 
-  const handleApplyCustomModal = () => {
+  const handleApplyCustom = () => {
     let input = customUsernameOnly.trim().toLowerCase();
     let targetDom = customDomainChoice || (domains.length > 0 ? domains[0] : "bakmi.my.id");
 
@@ -349,7 +354,7 @@ export function EmailPane({
       return;
     }
 
-    setCustomModalOpen(false);
+    setCustomFormOpen(false);
     setCustomUsernameOnly("");
     // Buat beneran di server lewat /api/email/generate (dulu cuma setActiveEmail
     // lokal sehingga alamat tidak terdaftar dan email masuk ditolak webhook)
@@ -626,13 +631,13 @@ export function EmailPane({
                 <span>Acak Baru</span>
               </Button>
 
-              {/* Tombol Kustom (Membuka dialog popup rapi) */}
+              {/* Tombol Kustom (form inline mekar di bawah) */}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={openCustomModal}
-                className="h-10 sm:h-8 px-3.5 sm:px-3 text-xs gap-1.5 font-medium border-border/80 hover:border-primary/50 hover:bg-primary/10 hover:text-primary active:scale-95"
+                onClick={toggleCustomForm}
+                className={`h-10 sm:h-8 px-3.5 sm:px-3 text-xs gap-1.5 font-medium border-border/80 hover:border-primary/50 hover:bg-primary/10 hover:text-primary active:scale-95 ${customFormOpen ? "border-primary/60 bg-primary/10 text-primary" : ""}`}
               >
                 <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                 <span>Kustom</span>
@@ -666,6 +671,94 @@ export function EmailPane({
               <QrCode className="h-3.5 w-3.5" />
             </Button>
           </div>
+
+          {/* Form kustom inline: mekar di bawah baris aksi, tanpa popup */}
+          {customFormOpen && (
+            <div className="mt-2 rounded-xl border border-border/70 bg-muted/30 p-2.5 animate-in slide-in-from-top-2 fade-in duration-200">
+              <div className="flex items-stretch gap-2">
+                {/* Kolom kiri: username + domain */}
+                <div className="flex-1 flex flex-col gap-2 min-w-0">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Nama pengguna"
+                    value={customUsernameOnly}
+                    onChange={(e) => setCustomUsernameOnly(e.target.value.toLowerCase())}
+                    onKeyDown={(e) => e.key === "Enter" && handleApplyCustom()}
+                    className="h-10 px-3 rounded-lg bg-background border border-border/80 text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary w-full"
+                  />
+                  {/* Dropdown domain */}
+                  <div className="relative" ref={domainDropRef}>
+                    <button
+                      type="button"
+                      onClick={() => setDomainDropOpen((o) => !o)}
+                      className="h-10 px-3 rounded-lg bg-background border border-border/80 text-foreground text-sm w-full flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <span className="truncate">@{customDomainChoice || domains[0] || ""}</span>
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${domainDropOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {domainDropOpen && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 rounded-lg border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                        {domains.map((dom) => {
+                          const active = (customDomainChoice || domains[0]) === dom;
+                          return (
+                            <button
+                              key={dom}
+                              type="button"
+                              onClick={() => { setCustomDomainChoice(dom); setDomainDropOpen(false); }}
+                              className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between gap-2 ${active ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted text-foreground"}`}
+                            >
+                              <span className="truncate">@{dom}</span>
+                              {active && <Check className="h-4 w-4 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Tombol buat */}
+                <button
+                  type="button"
+                  onClick={handleApplyCustom}
+                  className="w-12 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center shrink-0 active:scale-95"
+                  title="Buat email"
+                >
+                  <ChevronRight className="h-6 w-6 stroke-[2.5]" />
+                </button>
+                {/* Tombol acak */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomUsernameOnly(generateRandomUsername());
+                    if (domains.length > 0) {
+                      const randomDom = domains[Math.floor(Math.random() * domains.length)];
+                      setCustomDomainChoice(randomDom);
+                    }
+                  }}
+                  className="w-12 rounded-lg bg-background hover:bg-muted border border-border/80 text-foreground flex items-center justify-center shrink-0 active:scale-95"
+                  title="Acak username & domain"
+                >
+                  <Shuffle className="h-5 w-5 text-muted-foreground" />
+                </button>
+                {/* Tombol tutup */}
+                <button
+                  type="button"
+                  onClick={() => setCustomFormOpen(false)}
+                  className="w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted flex items-start justify-center shrink-0 active:scale-95 pt-2.5"
+                  title="Tutup"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {/* Pratinjau alamat hasil */}
+              {customUsernameOnly.trim() !== "" && (
+                <p className="mt-2 px-1 text-xs text-muted-foreground truncate">
+                  Jadinya: <span className="font-semibold text-foreground">{customUsernameOnly.trim().toLowerCase()}@{customDomainChoice || domains[0] || ""}</span>
+                </p>
+              )}
+            </div>
+          )}
         </div>
     
       {/* ── Status ringkas + aksi destruktif ── */}
@@ -857,98 +950,6 @@ export function EmailPane({
             <p className="text-xs font-mono text-center text-muted-foreground break-all px-2">
               {activeEmail}
             </p>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Modal Dialog Kustom Email Persis Gambar Referensi ── */}
-      <Dialog open={customModalOpen} onOpenChange={(o) => { setCustomModalOpen(o); if (!o) setDomainDropOpen(false); }}>
-        <DialogContent className="max-w-md p-4 bg-card text-card-foreground border border-border shadow-2xl rounded-2xl">
-          <DialogTitle className="sr-only">Kustom Alamat Email</DialogTitle>
-          <div className="space-y-3">
-            {/* Kotak Berbingkai Dashed Border Mengikuti Tema Web */}
-            <div className="border border-dashed border-primary/30 dark:border-primary/20 rounded-xl p-3 bg-muted/40 flex items-stretch gap-2.5">
-              {/* Kolom Kiri: 2 Input Bertumpuk (Username + Domain Select) */}
-              <div className="flex-1 flex flex-col gap-2 min-w-0">
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Enter Username"
-                  value={customUsernameOnly}
-                  onChange={(e) => setCustomUsernameOnly(e.target.value.toLowerCase())}
-                  onKeyDown={(e) => e.key === "Enter" && handleApplyCustomModal()}
-                  className="h-10 px-3 rounded-lg bg-background border border-border/80 text-foreground placeholder:text-muted-foreground text-xs sm:text-sm font-sans focus:outline-none focus:ring-1 focus:ring-primary w-full shadow-xs"
-                />
-
-                {/* Dropdown Domain Kustom (inline, bukan popup native) */}
-                <div className="relative" ref={domainDropRef}>
-                  <button
-                    type="button"
-                    onClick={() => setDomainDropOpen((o) => !o)}
-                    className="h-10 px-3 rounded-lg bg-background border border-border/80 text-foreground text-xs sm:text-sm font-sans w-full flex items-center justify-between gap-2 cursor-pointer shadow-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <span className="truncate">@{customDomainChoice || domains[0] || ""}</span>
-                    <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${domainDropOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {domainDropOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1.5 z-50 rounded-lg border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-                      {domains.map((dom) => {
-                        const active = (customDomainChoice || domains[0]) === dom;
-                        return (
-                          <button
-                            key={dom}
-                            type="button"
-                            onClick={() => { setCustomDomainChoice(dom); setDomainDropOpen(false); }}
-                            className={`w-full px-3 py-2.5 text-left text-xs sm:text-sm font-sans flex items-center justify-between gap-2 cursor-pointer transition-colors ${active ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted text-foreground"}`}
-                          >
-                            <span className="truncate">@{dom}</span>
-                            {active && <Check className="h-4 w-4 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Tombol Lanjut Panah Kanan (Cyan/Teal Theme Accent) */}
-              <button
-                type="button"
-                onClick={handleApplyCustomModal}
-                className="w-12 sm:w-14 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95 shadow-xs"
-                title="Lanjut / Buat"
-              >
-                <ChevronRight className="h-6 w-6 stroke-[2.5]" />
-              </button>
-
-              {/* Pemisah Garis Putus-putus Vertikal */}
-              <div className="w-[1px] border-r border-dashed border-border my-2 self-stretch shrink-0" />
-
-              {/* Tombol Shuffle / Acak */}
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomUsernameOnly(generateRandomUsername());
-                  if (domains.length > 0) {
-                    const randomDom = domains[Math.floor(Math.random() * domains.length)];
-                    setCustomDomainChoice(randomDom);
-                  }
-                }}
-                className="w-12 sm:w-14 rounded-lg bg-background hover:bg-muted border border-border/80 text-foreground flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95 shadow-xs"
-                title="Acak Username & Domain"
-              >
-                <Shuffle className="h-5 w-5 text-muted-foreground" />
-              </button>
-            </div>
-
-            {/* Tombol Cancel Penuh Selebar Kontainer di Bawah */}
-            <button
-              type="button"
-              onClick={() => setCustomModalOpen(false)}
-              className="w-full h-11 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground text-sm font-semibold transition-all cursor-pointer active:scale-98 shadow-xs"
-            >
-              Cancel
-            </button>
           </div>
         </DialogContent>
       </Dialog>
