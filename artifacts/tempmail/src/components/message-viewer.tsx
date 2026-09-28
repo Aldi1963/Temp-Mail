@@ -1,6 +1,10 @@
 import { format } from "date-fns";
-import { ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert, Copy, Check, FileImage, FileVideo, FileAudio, FileArchive, FileCode, File } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert,
+  Copy, Check, FileImage, FileVideo, FileAudio, FileArchive, FileCode, File,
+  KeyRound, ExternalLink, Globe, Code, Printer, Forward, Share2
+} from "lucide-react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +17,7 @@ import {
   getGetEmailStatsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { getManageToken } from "@/lib/manage-token";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -124,11 +129,118 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Regex detector for OTP codes and verification links
+function extractOtpAndLinks(text: string, html: string) {
+  const combined = `${text} ${html.replace(/<[^>]*>/g, " ")}`;
+  
+  // Detect OTP (4-8 digits, or patterns like 123-456, G-123456)
+  const otpPatterns = [
+    /\b(?:code|kode|otp|pin|verification|verifikasi|token|password|passcode)\b[^\d]{1,25}(\d{4,8})\b/i,
+    /\b([0-9]{3}[-\s][0-9]{3})\b/,
+    /\b(?:G-|FB-)(\d{5,6})\b/i,
+    /\b(\d{6})\b/
+  ];
+
+  let detectedOtp: string | null = null;
+  for (const pattern of otpPatterns) {
+    const match = combined.match(pattern);
+    if (match) {
+      detectedOtp = match[1] || match[0];
+      break;
+    }
+  }
+
+  // Detect verify/confirm URL
+  let detectedVerifyUrl: string | null = null;
+  const linkMatches = html.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi);
+  for (const m of linkMatches) {
+    const url = m[1];
+    if (/(verify|verifikasi|confirm|aktivasi|activate|auth|validate)/i.test(url)) {
+      detectedVerifyUrl = url;
+      break;
+    }
+  }
+
+  return { detectedOtp, detectedVerifyUrl };
+}
+
+// Clean raw MIME headers if email was forwarded raw by Cloudflare simple worker
+function looksLikeHtml(s: string): boolean {
+  const t = s.trimStart();
+  return /^(<!doctype html|<html[\s>]|<head[\s>]|<body[\s>])/i.test(t);
+}
+
+function parseReadableEmail(raw: string): { text: string; html: string | null } {
+  if (!raw) return { text: "", html: null };
+
+  // If already clean text (no MIME headers like Received:, ARC-Seal, etc)
+  if (!raw.includes("Received:") && !raw.includes("ARC-Seal:") && !raw.includes("Content-Type:") && !raw.includes("boundary=")) {
+    // Single-part HTML emails are sometimes stored as text — render them as HTML
+    if (looksLikeHtml(raw)) return { text: "", html: raw };
+    return { text: raw, html: null };
+  }
+
+  // Find all boundaries (handles nested multipart like Canva / Amazon SES)
+  const boundaryRegex = /boundary="?([^"\r\n;]+)"?/gi;
+  const boundaries: string[] = [];
+  let bm: RegExpExecArray | null;
+  while ((bm = boundaryRegex.exec(raw)) !== null) {
+    boundaries.push(bm[1]);
+  }
+
+  function decodeQp(s: string): string {
+    if (!s) return "";
+    return s
+      .replace(/=\r?\n/g, "")
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  }
+
+  function cleanPart(partStr: string): string {
+    const bodyStart = partStr.indexOf("\r\n\r\n") !== -1 ? partStr.indexOf("\r\n\r\n") + 4 : partStr.indexOf("\n\n") !== -1 ? partStr.indexOf("\n\n") + 2 : -1;
+    let body = bodyStart !== -1 ? partStr.slice(bodyStart) : partStr;
+    body = body.replace(/--[^\r\n-]+--?[\r\n]*/g, "").trim();
+    return decodeQp(body);
+  }
+
+  let extractedText = "";
+  let extractedHtml: string | null = null;
+
+  if (boundaries.length > 0) {
+    for (const b of boundaries) {
+      const escaped = b.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+      const parts = raw.split(new RegExp(`--${escaped}(?:--)?`));
+      for (const part of parts) {
+        if (part.includes("Content-Type: text/plain") && !extractedText) {
+          extractedText = cleanPart(part);
+        }
+        if (part.includes("Content-Type: text/html") && !extractedHtml) {
+          extractedHtml = cleanPart(part);
+        }
+      }
+    }
+  }
+
+  if (!extractedText && !extractedHtml) {
+    const headerEnd = raw.indexOf("\r\n\r\n") !== -1 ? raw.indexOf("\r\n\r\n") + 4 : raw.indexOf("\n\n") !== -1 ? raw.indexOf("\n\n") + 2 : -1;
+    if (headerEnd !== -1) {
+      extractedText = decodeQp(raw.slice(headerEnd).trim());
+    }
+  }
+
+  const finalText = extractedText || raw;
+  if (!extractedHtml && looksLikeHtml(finalText)) {
+    return { text: "", html: finalText };
+  }
+  return { text: finalText, html: extractedHtml };
+}
+
 export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) {
   const queryClient = useQueryClient();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [otpCopied, setOtpCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<"html" | "text">("html");
 
   const { data: message, isLoading, isError } = useGetMessage(
     { id: messageId, email },
@@ -136,7 +248,9 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
   );
 
   const markReadMutation = useMarkMessageRead();
-  const blockMutation = useAddToBlacklist();
+  const blockMutation = useAddToBlacklist({
+    request: email && getManageToken(email) ? { headers: { "X-Manage-Token": getManageToken(email)! } } : {},
+  });
 
   useEffect(() => {
     if (message && !message.isRead) {
@@ -155,16 +269,117 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
     }
   }, [message?.id]);
 
+  const parsedContent = useMemo(() => {
+    if (!message) return { text: "", html: null };
+
+    // Function to extract clean HTML if raw HTML contains MIME headers/multiparts
+    const extractCleanHtml = (raw: string | null): string | null => {
+      if (!raw) return null;
+      const htmlStart = raw.search(/<!doctype html|<html/i);
+      if (htmlStart !== -1) {
+        let clean = raw.slice(htmlStart);
+        const htmlEnd = clean.search(/<\/html>/i);
+        if (htmlEnd !== -1) {
+          clean = clean.slice(0, htmlEnd + 7);
+        }
+        // decode quoted printable
+        clean = clean
+          .replace(/=\r?\n/g, "")
+          .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+        return clean;
+      }
+      return raw;
+    };
+
+    if (message.htmlBody) {
+      return {
+        text: message.textBody || "",
+        html: extractCleanHtml(message.htmlBody),
+      };
+    }
+    const parsed = parseReadableEmail(message.textBody || "");
+    return {
+      text: parsed.text,
+      html: extractCleanHtml(parsed.html),
+    };
+  }, [message]);
+
+  const handlePrint = () => {
+    if (iframeRef.current?.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.focus();
+        iframeRef.current.contentWindow.print();
+        return;
+      } catch {}
+    }
+    window.print();
+  };
+
   useEffect(() => {
-    if (message?.htmlBody && iframeRef.current) {
+    if (parsedContent.html && iframeRef.current) {
       const doc = iframeRef.current.contentDocument;
       if (doc) {
         doc.open();
-        doc.write(message.htmlBody);
+        // If html already has <!doctype html> or <html, write it directly!
+        if (parsedContent.html.toLowerCase().includes("<html") || parsedContent.html.toLowerCase().includes("<!doctype")) {
+          // Inject max-width responsive helper before </head> or at start
+          let finalHtml = parsedContent.html;
+          const responsiveStyle = `<style>
+            body { margin: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+            img, table { max-width: 100% !important; height: auto !important; }
+          </style>`;
+          if (finalHtml.includes("</head>")) {
+            finalHtml = finalHtml.replace("</head>", `${responsiveStyle}</head>`);
+          } else {
+            finalHtml = responsiveStyle + finalHtml;
+          }
+          doc.write(finalHtml);
+        } else {
+          const styledHtml = `
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                  body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-size: 14px;
+                    line-height: 1.6;
+                    margin: 8px;
+                    color: inherit;
+                    word-break: break-word;
+                  }
+                  img { max-width: 100% !important; height: auto !important; }
+                  table { max-width: 100% !important; }
+                </style>
+              </head>
+              <body>
+                ${parsedContent.html}
+              </body>
+            </html>
+          `;
+          doc.write(styledHtml);
+        }
         doc.close();
+
+        // Auto-adjust iframe height to eliminate double scrollbar
+        const adjustHeight = () => {
+          if (iframeRef.current && doc.body) {
+            const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 250);
+            iframeRef.current.style.height = `${h + 20}px`;
+          }
+        };
+        setTimeout(adjustHeight, 150);
+        setTimeout(adjustHeight, 500);
       }
     }
-  }, [message?.htmlBody]);
+  }, [parsedContent.html]);
+
+  const { detectedOtp, detectedVerifyUrl } = useMemo(() => {
+    if (!message) return { detectedOtp: null, detectedVerifyUrl: null };
+    return extractOtpAndLinks(parsedContent.text, parsedContent.html || "");
+  }, [message, parsedContent]);
 
   const handleBlock = (pattern: string, label: string) => {
     blockMutation.mutate(
@@ -197,6 +412,13 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
       toast({ title: "Tersalin!", description: "Isi email telah disalin ke clipboard.", duration: 2000 });
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const copyOtp = (otp: string) => {
+    navigator.clipboard.writeText(otp);
+    setOtpCopied(true);
+    toast({ title: "Kode OTP Tersalin!", description: otp, duration: 2500 });
+    setTimeout(() => setOtpCopied(false), 2000);
   };
 
   const getSenderDomain = (from: string) => {
@@ -239,27 +461,27 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
   const senderDomain = getSenderDomain(message.from);
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-lg border border-border shadow-sm overflow-hidden flex-1">
+    <div className="flex flex-col h-full min-h-0 bg-card rounded-lg border border-border shadow-sm overflow-hidden flex-1">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-border bg-muted/10 sticky top-0 z-10">
+      <div className="flex items-center gap-3 p-3 sm:p-4 border-b border-border bg-muted/10 sticky top-0 z-10">
         <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 sm:hidden h-8 w-8">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h2 className="text-base font-bold text-foreground truncate flex-1" data-testid="msg-view-subject">
+        <h2 className="text-sm sm:text-base font-bold text-foreground truncate flex-1" data-testid="msg-view-subject">
           {message.subject || "(Tanpa Subjek)"}
         </h2>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Copy button */}
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10"
+            className="gap-1 h-8 px-2 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10"
             title="Salin isi email"
             onClick={copyEmailContent}
           >
             {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Tersalin" : "Salin"}
+            <span className="hidden sm:inline">{copied ? "Tersalin" : "Salin"}</span>
           </Button>
 
           {/* Block dropdown */}
@@ -268,11 +490,11 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                className="gap-1 h-8 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                 title="Blokir pengirim"
               >
                 <ShieldBan className="h-3.5 w-3.5" />
-                Blokir
+                <span className="hidden sm:inline">Blokir</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
@@ -303,9 +525,9 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
           {/* Export dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs">
+              <Button variant="outline" size="sm" className="gap-1 h-8 px-2 text-xs">
                 <FileDown className="h-3.5 w-3.5" />
-                Ekspor
+                <span className="hidden sm:inline">Ekspor</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
@@ -323,31 +545,95 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
                 <FileText className="h-3.5 w-3.5" />
                 Unduh .txt
               </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs cursor-pointer gap-2"
+                onClick={handlePrint}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Cetak / PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs cursor-pointer gap-2"
+                onClick={() => {
+                  const subject = encodeURIComponent(`Fwd: ${message.subject}`);
+                  const body = encodeURIComponent(
+                    `--- Diteruskan dari TempMail ---\nDari: ${message.from}\nTanggal: ${message.receivedAt}\n\n${parsedContent.text || ""}`
+                  );
+                  window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+                }}
+              >
+                <Forward className="h-3.5 w-3.5" />
+                Kirim ke Gmail
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
 
+      {/* ── AUTO-DETECTED OTP & VERIFICATION CALLOUT ── */}
+      {(detectedOtp || detectedVerifyUrl) && (
+        <div className="bg-primary/5 border-b border-primary/20 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          {detectedOtp && (
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-md bg-primary/10 text-primary">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Kode OTP:
+                </span>
+                <span className="font-mono text-base font-extrabold text-foreground tracking-widest bg-background px-2.5 py-0.5 rounded border border-primary/30 select-all">
+                  {detectedOtp}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyOtp(detectedOtp!)}
+                  className="h-7 px-2.5 text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10 gap-1 active:scale-95"
+                >
+                  {otpCopied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  {otpCopied ? "Tersalin" : "Salin Kode"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {detectedVerifyUrl && (
+            <div className="flex items-center gap-2 ml-auto">
+              <a
+                href={detectedVerifyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-xs active:scale-95 transition-all"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Buka Link Verifikasi
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Meta */}
-      <div className="p-4 sm:p-5 border-b border-border bg-muted/5">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-          <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-sm flex items-center gap-1.5">
+      <div className="p-3 sm:p-4 border-b border-border bg-muted/5">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3">
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-xs sm:text-sm flex items-center gap-1.5">
               <span className="text-muted-foreground text-xs">Dari:</span>
               <span className="font-medium truncate">{message.from}</span>
             </span>
-            <span className="text-sm flex items-center gap-1.5">
+            <span className="text-xs sm:text-sm flex items-center gap-1.5">
               <span className="text-muted-foreground text-xs">Ke:</span>
-              <span className="text-foreground/80 truncate">{message.to}</span>
+              <span className="text-foreground/80 truncate font-mono">{message.to}</span>
             </span>
           </div>
-          <span className="text-xs text-muted-foreground whitespace-nowrap bg-background px-2.5 py-1.5 rounded-md border border-border shrink-0">
+          <span className="text-[11px] sm:text-xs text-muted-foreground whitespace-nowrap bg-background px-2 py-1 rounded-md border border-border shrink-0 self-start">
             {format(new Date(message.receivedAt), "d MMM yyyy, HH:mm")}
           </span>
         </div>
 
         {message.attachments && message.attachments.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-3 pt-3 border-t border-border/40">
             <div className="flex items-center gap-1.5 mb-2">
               <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-medium text-muted-foreground">
@@ -360,10 +646,10 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
                 return (
                   <div
                     key={i}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 group"
+                    className="flex items-center gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2 group"
                   >
-                    <div className="shrink-0 w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center">
-                      <IconComponent className="h-4 w-4 text-muted-foreground" />
+                    <div className="shrink-0 w-7 h-7 rounded-lg bg-background border border-border flex items-center justify-center">
+                      <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate leading-tight">{att.filename}</p>
@@ -376,26 +662,26 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
               })}
             </div>
             <p className="text-[10px] text-muted-foreground mt-2 italic">
-              Konten lampiran tidak tersedia untuk diunduh pada layanan ini.
+              Konten lampiran dilindungi untuk keamanan Anda.
             </p>
           </div>
         )}
       </div>
 
-      {/* Body */}
-      <ScrollArea className="flex-1 p-0">
-        <div className="p-4 sm:p-6 min-h-full bg-white dark:bg-[#fafafa]">
-          {message.htmlBody ? (
+      {/* Body — Renders rich email (like Gmail) if HTML is available, or clean text */}
+      <ScrollArea className="flex-1 min-h-0 p-0">
+        <div className="p-2 sm:p-4 min-h-[300px] bg-white text-black rounded-b-2xl">
+          {parsedContent.html ? (
             <iframe
               ref={iframeRef}
               title="Isi Pesan"
-              className="w-full min-h-[500px] border-0"
+              className="w-full min-h-[450px] border-0 block bg-white"
               sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             />
           ) : (
-            <pre className="whitespace-pre-wrap font-mono text-sm text-black leading-relaxed">
-              {message.textBody || "Isi pesan kosong."}
-            </pre>
+            <div className="p-3 whitespace-pre-wrap font-sans text-sm sm:text-base leading-relaxed max-w-none select-text text-slate-800">
+              {parsedContent.text || "Isi pesan kosong."}
+            </div>
           )}
         </div>
       </ScrollArea>
