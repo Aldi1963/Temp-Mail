@@ -1,23 +1,40 @@
 import { useCallback, useEffect, useState } from 'react';
 
 const createChime = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gainNode = ctx.createGain();
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Play a pleasant two-tone chime (A5 -> D6) like Gmail notification
+    const now = ctx.currentTime;
+    
+    // Tone 1
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now); // A5
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.3, now + 0.04);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.25);
 
-  osc.connect(gainNode);
-  gainNode.connect(ctx.destination);
-
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
-  osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
-
-  gainNode.gain.setValueAtTime(0, ctx.currentTime);
-  gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.5);
+    // Tone 2 (higher, cheerful)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1174.66, now + 0.12); // D6
+    gain2.gain.setValueAtTime(0, now + 0.12);
+    gain2.gain.linearRampToValueAtTime(0.4, now + 0.16);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.45);
+  } catch (e) {
+    console.error('AudioContext chime failed', e);
+  }
 };
 
 export function useSound() {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
-import { Inbox, Mail, LogIn } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
+import { Inbox, Mail, LogIn, Zap } from "lucide-react";
+import { useAuth, userFetch } from "@/hooks/use-auth";
+import { getManageToken } from "@/lib/manage-token";
 import { Header } from "@/components/header";
 import { EmailPane } from "@/components/email-pane";
 import { InboxList } from "@/components/inbox-list";
@@ -16,6 +17,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import {
   useGetInbox,
   useMarkMessageRead,
+  useResetInbox,
   getGetInboxQueryKey,
   getGetEmailStatsQueryKey,
 } from "@workspace/api-client-react";
@@ -31,6 +33,10 @@ const MAX_INBOXES = 5;
 export default function Home() {
   const [activeEmail, setActiveEmailRaw] = useLocalStorage<string | null>("tempmail_active_email", null);
   const [inboxList, setInboxList] = useLocalStorage<InboxEntry[]>("tempmail_inbox_list", []);
+  // Email milik akun (diambil dari server) — bertahan lintas perangkat/browser
+  const [serverEmails, setServerEmails] = useState<string[]>([]);
+  // Counter permintaan generate eksplisit (tombol "+" di switcher)
+  const [generateRequest, setGenerateRequest] = useState(0);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -58,6 +64,7 @@ export default function Home() {
 
   const { hasPin, isUnlocked, setupPin, removePin, verifyPin, lock } = usePin();
   const markReadMutation = useMarkMessageRead();
+  const resetInboxMutation = useResetInbox();
 
   const setActiveEmail = useCallback((email: string) => {
     setActiveEmailRaw(email);
@@ -70,16 +77,135 @@ export default function Home() {
   }, [setActiveEmailRaw, setInboxList]);
 
   const removeFromList = useCallback((email: string) => {
+    const ownedByServer = user != null && serverEmails.includes(email);
     setInboxList((prev) => prev.filter((e) => e.email !== email));
+    setServerEmails((prev) => prev.filter((e) => e !== email));
+    // Hapus kepemilikan di server agar email tidak muncul lagi setelah reload/login
+    if (ownedByServer) {
+      userFetch("/api/user/emails", {
+        method: "DELETE",
+        body: JSON.stringify({ email }),
+      }).catch(() => {
+        toast({ title: "Gagal menghapus permanen", description: "Email bisa muncul lagi setelah reload." });
+      });
+    }
     if (activeEmail === email) {
       const remaining = inboxList.filter((e) => e.email !== email);
       setActiveEmailRaw(remaining.length > 0 ? remaining[0].email : null);
     }
-  }, [activeEmail, inboxList, setActiveEmailRaw, setInboxList]);
+  }, [activeEmail, inboxList, setActiveEmailRaw, setInboxList, user, serverEmails, toast]);
+
+  // Bersihkan entri lokal yang sudah pasti kedaluwarsa (>31 hari dari addedAt)
+  // agar alamat "hantu" tidak muncul/hilang sendiri di switcher.
+  useEffect(() => {
+    const MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    setInboxList((prev) => {
+      const kept = prev.filter((e) => {
+        const t = Date.parse(e?.addedAt ?? "");
+        return Number.isNaN(t) || now - t <= MAX_AGE_MS;
+      });
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [setInboxList]);
 
   const switchToInbox = useCallback((email: string) => {
     setActiveEmailRaw(email);
   }, [setActiveEmailRaw]);
+
+  // Ambil daftar email milik akun dari server saat login
+  useEffect(() => {
+    if (!user) {
+      setServerEmails([]);
+      return;
+    }
+    let cancelled = false;
+    userFetch("/api/user/emails")
+      .then((d) => {
+        if (cancelled) return;
+        const list = ((d?.emails || []) as any[])
+          .filter((e) => !e.isExpired)
+          .map((e) => e.email as string);
+        setServerEmails(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  // Kalau login tapi belum ada email aktif, pakai alamat terbaru milik akun
+  useEffect(() => {
+    if (user && !activeEmail && serverEmails.length > 0) {
+      setActiveEmail(serverEmails[0]);
+    }
+  }, [user, activeEmail, serverEmails, setActiveEmail]);
+
+  // Saat login: klaim alamat guest (localStorage) ke akun agar permanen
+  const claimedRef = useRef(false);
+  useEffect(() => {
+    if (!user) {
+      claimedRef.current = false;
+      return;
+    }
+    if (claimedRef.current) return;
+    claimedRef.current = true;
+    (async () => {
+      let claimed = 0;
+      try {
+        const raw = localStorage.getItem("tempmail_inbox_list");
+        const locals = raw ? JSON.parse(raw) : [];
+        for (const entry of locals) {
+          const em = entry?.email;
+          if (!em) continue;
+          const token = getManageToken(em);
+          if (!token) continue;
+          try {
+            const r = await userFetch("/api/user/emails/claim", {
+              method: "POST",
+              body: JSON.stringify({ email: em, manageToken: token }),
+            });
+            if (r?.claimed) claimed++;
+          } catch {
+            /* bukan milik browser ini / sudah diklaim / kedaluwarsa */
+          }
+        }
+      } catch {
+        /* abaikan */
+      }
+      if (claimed > 0) {
+        toast({ title: `${claimed} email ditautkan ke akun`, description: "Email & riwayat Anda kini tersimpan permanen di akun." });
+        try {
+          const d = await userFetch("/api/user/emails");
+          const list = ((d?.emails || []) as any[])
+            .filter((e) => !e.isExpired)
+            .map((e) => e.email as string);
+          setServerEmails(list);
+        } catch {
+          /* abaikan */
+        }
+      }
+    })();
+  }, [user, toast]);
+
+  // Gabungan email server + lokal untuk switcher (tanpa duplikat)
+  const mergedInboxList = useMemo(() => {
+    const seen = new Set<string>();
+    const out: InboxEntry[] = [];
+    for (const em of serverEmails) {
+      if (!seen.has(em)) {
+        seen.add(em);
+        out.push({ email: em, addedAt: new Date().toISOString() });
+      }
+    }
+    for (const e of inboxList) {
+      if (!seen.has(e.email)) {
+        seen.add(e.email);
+        out.push(e);
+      }
+    }
+    return out;
+  }, [serverEmails, inboxList]);
 
   const INBOX_REFETCH_INTERVAL_MS = 5000;
   const { data: inbox, isLoading, isFetching: isFetchingInbox, dataUpdatedAt: inboxUpdatedAt, refetch: refetchInbox } = useGetInbox(
@@ -106,6 +232,12 @@ export default function Home() {
     if (inbox && inbox.total > prevTotalRef.current) {
       if (prevTotalRef.current > 0) {
         playChime();
+        // Haptic feedback for mobile phones (vibrate)
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          try {
+            navigator.vibrate([100, 50, 100]);
+          } catch {}
+        }
         toast({ title: "Email Baru Masuk", description: "Ada pesan baru di inbox Anda." });
 
         if ("Notification" in window && Notification.permission === "granted") {
@@ -148,6 +280,26 @@ export default function Home() {
     toast({ title: `${unread.length} pesan ditandai dibaca` });
   }, [activeEmail, inbox?.messages, markReadMutation, queryClient, toast]);
 
+  const handleClearInbox = useCallback(() => {
+    if (!activeEmail || !inbox?.messages || inbox.messages.length === 0) return;
+    if (window.confirm("Yakin ingin menghapus semua pesan di kotak masuk ini?")) {
+      resetInboxMutation.mutate(
+        { params: { email: activeEmail } },
+        {
+          onSuccess: () => {
+            setSelectedMessageId(null);
+            queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email: activeEmail }) });
+            queryClient.invalidateQueries({ queryKey: getGetEmailStatsQueryKey({ email: activeEmail }) });
+            toast({ title: "Kotak masuk dikosongkan" });
+          },
+          onError: () => {
+            toast({ title: "Gagal mengosongkan inbox", variant: "destructive" });
+          },
+        }
+      );
+    }
+  }, [activeEmail, inbox?.messages, resetInboxMutation, queryClient, toast]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts(
     useMemo(() => ({
@@ -182,34 +334,60 @@ export default function Home() {
 
       <Header
         rightSlot={
-          <InboxSwitcher
-            activeEmail={activeEmail}
-            inboxList={inboxList}
-            onSwitch={switchToInbox}
-            onAdd={() => setActiveEmailRaw(null)}
-            onRemove={removeFromList}
-          />
+          <div className="hidden sm:block">
+            <InboxSwitcher
+              activeEmail={activeEmail}
+              inboxList={mergedInboxList}
+              onSwitch={switchToInbox}
+              onAdd={() => setGenerateRequest((n) => n + 1)}
+              onRemove={removeFromList}
+            />
+          </div>
+        }
+        mobileSlot={
+          <div className="sm:hidden">
+            <InboxSwitcher
+              compact
+              activeEmail={activeEmail}
+              inboxList={mergedInboxList}
+              onSwitch={switchToInbox}
+              onAdd={() => setGenerateRequest((n) => n + 1)}
+              onRemove={removeFromList}
+            />
+          </div>
         }
       />
 
       {/* ── MOBILE LAYOUT (< lg) ── */}
-      <div className="lg:hidden flex-1 flex flex-col relative">
+      <div className="lg:hidden flex-1 flex flex-col relative w-full md:max-w-3xl md:mx-auto">
 
-        {/* Mobile: message viewer — full-screen overlay when message selected */}
+        {/* Mobile: message viewer — compact bottom-sheet modal / dialog (sentuh luar untuk tutup) */}
         {selectedMessageId && (
-          <div className="fixed inset-0 z-40 bg-background flex flex-col" style={{ top: 56 }}>
-            <MessageViewer
-              messageId={selectedMessageId}
-              email={activeEmail!}
-              onBack={handleBackFromMessage}
-            />
+          <div
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end sm:justify-center p-0 sm:p-4 cursor-pointer"
+            onClick={handleBackFromMessage}
+          >
+            <div
+              className="bg-card w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl border border-border shadow-2xl flex flex-col overflow-hidden overscroll-contain max-h-[88vh] sm:max-h-[82vh] animate-in slide-in-from-bottom-4 duration-200 cursor-default pb-[env(safe-area-inset-bottom)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drag handle pill bar on top of modal */}
+              <div className="w-full flex justify-center pt-2 pb-1 sm:hidden">
+                <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+              </div>
+              <MessageViewer
+                messageId={selectedMessageId}
+                email={activeEmail!}
+                onBack={handleBackFromMessage}
+              />
+            </div>
           </div>
         )}
 
         {/* Mobile: single scrollable page — email pane + inbox stacked */}
-        <div className="flex-1 overflow-y-auto pb-16">
+        <div className="flex-1 overflow-y-auto pb-6">
           {/* Email / Generate section */}
-          <div className="p-3 pb-0" id="section-email">
+          <div className="p-3 pb-0 w-full max-w-full box-border" id="section-email">
             <EmailPane
               activeEmail={activeEmail}
               setActiveEmail={setActiveEmail}
@@ -217,27 +395,16 @@ export default function Home() {
               onSetupPin={setupPin}
               onRemovePin={removePin}
               onLock={lock}
+              generateRequest={generateRequest}
+              hideTopStatus
             />
           </div>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 px-4 py-3 mt-1">
-            <div className="flex-1 h-px bg-border/60" />
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-              <Inbox className="h-3.5 w-3.5" />
-              Inbox
-              {unreadCount > 0 && (
-                <span className="ml-0.5 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </div>
-            <div className="flex-1 h-px bg-border/60" />
-          </div>
-
           {/* Inbox list */}
-          <div className="px-3 pb-3" id="section-inbox">
+          <div className="pt-1 pb-3 w-full max-w-full box-border overflow-hidden" id="section-inbox">
             <InboxList
+              email={activeEmail || ""}
+              onDeselectMessage={handleBackFromMessage}
               messages={inbox?.messages || []}
               isLoading={isLoading && !!activeEmail}
               isFetching={isFetchingInbox}
@@ -253,46 +420,24 @@ export default function Home() {
             />
           </div>
         </div>
-
-        {/* Mobile Bottom Bar — account only */}
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur">
-          <div className="flex items-center justify-between px-4 h-14">
-            {/* Brand */}
-            <div className="flex items-center gap-2">
-              <div className="bg-primary/10 p-1 rounded-md text-primary border border-primary/20">
-                <Mail className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-semibold">TempMail</span>
-              {unreadCount > 0 && (
-                <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </div>
-
-            {/* Account button */}
-            {user ? (
-              <button
-                className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors bg-muted/50 hover:bg-muted rounded-full px-3 py-1.5 border border-border"
-                onClick={() => navigate("/dashboard")}
-              >
-                <div className="h-5 w-5 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
-                  {user.email.substring(0, 1).toUpperCase()}
-                </div>
-                <span className="max-w-[80px] truncate">{user.email.split("@")[0]}</span>
-              </button>
-            ) : (
-              <button
-                className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full px-4 py-1.5 hover:bg-primary/90 transition-colors"
-                onClick={() => navigate("/login")}
-              >
-                <LogIn className="h-3.5 w-3.5" />
-                Masuk
-              </button>
-            )}
-          </div>
-        </div>
       </div>
+
+      {/* Sticky CTA mobile: Buat Email Baru selalu terjangkau saat scroll */}
+      {!activeEmail && (
+        <div
+          className="lg:hidden sticky bottom-0 z-20 px-4 bg-gradient-to-t from-background via-background/95 to-transparent"
+          style={{ paddingTop: "0.75rem", paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        >
+          <button
+            type="button"
+            onClick={() => setGenerateRequest((n) => n + 1)}
+            className="w-full h-12 rounded-2xl bg-primary text-primary-foreground text-sm font-bold shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Zap className="h-4 w-4" />
+            Buat Email Baru
+          </button>
+        </div>
+      )}
 
       {/* ── DESKTOP LAYOUT (≥ lg) ── */}
       <main className="relative z-10 flex-1 container max-w-7xl mx-auto p-4 md:p-5 hidden lg:grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -306,6 +451,7 @@ export default function Home() {
             onSetupPin={setupPin}
             onRemovePin={removePin}
             onLock={lock}
+            generateRequest={generateRequest}
           />
         </div>
 
@@ -314,6 +460,8 @@ export default function Home() {
 
           <div className={`w-full lg:w-[340px] xl:w-[380px] flex-shrink-0 flex flex-col ${selectedMessageId ? "hidden lg:flex" : "flex"}`}>
             <InboxList
+              email={activeEmail || ""}
+              onDeselectMessage={handleBackFromMessage}
               messages={inbox?.messages || []}
               isLoading={isLoading && !!activeEmail}
               isFetching={isFetchingInbox}
@@ -324,6 +472,7 @@ export default function Home() {
               onSelectMessage={setSelectedMessageId}
               onRefresh={handleRefreshInbox}
               onMarkAllRead={handleMarkAllRead}
+              onClearInbox={handleClearInbox}
               notifPermission={notifPermission}
               onRequestNotif={requestNotifPermission}
             />

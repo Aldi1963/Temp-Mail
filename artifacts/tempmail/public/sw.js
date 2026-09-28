@@ -1,48 +1,21 @@
-const CACHE_NAME = "tempmail-v1";
-const STATIC_ASSETS = ["/"];
+const CACHE_NAME = "tempmail-v-bypass-all";
 
+// Force immediate activation
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch(() => {});
-    })
-  );
   self.skipWaiting();
 });
 
+// Clear ALL caches on activate
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      )
-    )
+    caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
   );
   self.clients.claim();
 });
 
+// Network-first without caching to prevent stale assets
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-
-  if (event.request.method !== "GET") return;
-  if (url.pathname.includes("/api/")) return;
-  if (url.hostname !== self.location.hostname) return;
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((response) => {
-          if (response.ok && response.status === 200) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
-          }
-          return response;
-        })
-        .catch(() => cached);
-
-      return cached || fetchPromise;
-    })
-  );
+  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });
 
 self.addEventListener("push", (event) => {

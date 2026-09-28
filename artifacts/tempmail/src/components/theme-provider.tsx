@@ -35,17 +35,22 @@ export function ThemeProvider({
 
     root.classList.remove("light", "dark")
 
+    let resolved: "light" | "dark"
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
+      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light"
-
-      root.classList.add(systemTheme)
-      return
+      root.classList.add(resolved)
+    } else {
+      resolved = theme
+      root.classList.add(theme)
     }
 
-    root.classList.add(theme)
+    // Sinkronkan theme-color browser (address bar) dengan mode aktif
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) {
+      meta.setAttribute("content", resolved === "dark" ? "#0a0f1e" : "#06b6d4")
+    }
   }, [theme])
 
   const value = {

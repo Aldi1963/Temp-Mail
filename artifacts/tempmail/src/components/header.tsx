@@ -1,6 +1,6 @@
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle, Activity } from "lucide-react";
+import { Mail, Moon, Sun, Volume2, VolumeX, LogIn, ShieldCheck, LayoutDashboard, LogOut, Code2, UserCircle, Activity, Download, MoreVertical } from "lucide-react";
 import { useTheme } from "./theme-provider";
 import { useSound } from "@/hooks/use-sound";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,19 +17,40 @@ import {
 
 interface HeaderProps {
   rightSlot?: ReactNode;
+  /** Slot khusus mobile (di-render apa adanya di deretan kontrol kanan) */
+  mobileSlot?: ReactNode;
 }
 
-export function Header({ rightSlot }: HeaderProps) {
+export function Header({ rightSlot, mobileSlot }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } = useSound();
   const { user, logout, isLoading } = useAuth();
   const { branding } = useBranding();
   const siteName = (branding.site_name || "TempMail").trim();
   const siteLogo = (branding.site_logo_url || "").trim();
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      setDeferredPrompt(null);
+    }
+  };
 
   return (
     <header className="border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-50">
-      <div className="flex h-14 items-center justify-between px-4 md:px-6 max-w-screen-2xl mx-auto">
+      <div className="flex h-16 sm:h-14 items-center justify-between px-4 md:px-6 max-w-screen-2xl mx-auto">
         {/* Brand */}
         <Link href="/">
           <div className="flex items-center gap-2.5 cursor-pointer select-none group">
@@ -48,7 +69,7 @@ export function Header({ rightSlot }: HeaderProps) {
               )}
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="font-bold text-base tracking-tight text-foreground">{siteName}</span>
+              <span className="font-bold text-base tracking-tight text-foreground truncate max-w-[42vw] sm:max-w-none">{siteName}</span>
               <span className="hidden sm:inline text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full leading-none">
                 GRATIS
               </span>
@@ -79,16 +100,31 @@ export function Header({ rightSlot }: HeaderProps) {
 
         {/* Right controls */}
         <div className="flex items-center gap-1.5 ml-auto">
+          {deferredPrompt && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleInstallClick}
+              className="hidden sm:inline-flex h-8 gap-1.5 px-2.5 rounded-lg text-xs font-semibold text-primary border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all shrink-0 animate-pulse"
+              title="Pasang aplikasi TempMail di HP"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden xs:inline sm:inline">Pasang App</span>
+            </Button>
+          )}
+
           {rightSlot}
 
-          {/* Mobile-only quick link to API docs (desktop has it in the nav above) */}
+          {mobileSlot}
+
+          {/* Mobile-only quick link to API docs */}
           <Link href="/api-docs">
             <Button
               variant="ghost"
               size="icon"
               title="Dokumentasi API"
               aria-label="Dokumentasi API"
-              className="md:hidden h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="hidden sm:flex md:hidden h-8 w-8 text-muted-foreground hover:text-foreground"
             >
               <Code2 className="h-4 w-4" />
             </Button>
@@ -101,19 +137,54 @@ export function Header({ rightSlot }: HeaderProps) {
             size="icon"
             onClick={() => setSoundEnabled(!soundEnabled)}
             title={soundEnabled ? "Matikan suara" : "Aktifkan suara"}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="hidden sm:flex h-8 w-8 text-muted-foreground hover:text-foreground"
           >
             {soundEnabled
               ? <Volume2 className="h-4 w-4" />
               : <VolumeX className="h-4 w-4" />}
           </Button>
 
+          {/* Menu overflow khusus mobile: biar header tidak padat */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Menu lainnya"
+                aria-label="Menu lainnya"
+                className="flex sm:hidden h-10 w-10 text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <MoreVertical className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {deferredPrompt && (
+                <DropdownMenuItem onClick={handleInstallClick} className="gap-2 cursor-pointer px-3 py-2">
+                  <Download className="h-4 w-4 text-muted-foreground" />
+                  Pasang App
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setSoundEnabled(!soundEnabled)} className="gap-2 cursor-pointer px-3 py-2">
+                {soundEnabled
+                  ? <Volume2 className="h-4 w-4 text-muted-foreground" />
+                  : <VolumeX className="h-4 w-4 text-muted-foreground" />}
+                {soundEnabled ? "Matikan suara" : "Aktifkan suara"}
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/api-docs" className="flex items-center gap-2 cursor-pointer px-3 py-2">
+                  <Code2 className="h-4 w-4 text-muted-foreground" />
+                  Dokumentasi API
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            title="Ganti tema"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            title={theme === "dark" ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
+            className="flex h-10 w-10 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground shrink-0"
           >
             {theme === "dark"
               ? <Sun className="h-4 w-4" />

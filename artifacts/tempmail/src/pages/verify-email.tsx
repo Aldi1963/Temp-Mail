@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { CheckCircle2, XCircle, Loader2, Mail } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Mail, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/theme-provider";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -11,6 +12,7 @@ export default function VerifyEmailPage() {
   const [message, setMessage] = useState("");
   const [, navigate] = useLocation();
   const { refetch } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -49,7 +51,20 @@ export default function VerifyEmailPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative">
+      {/* Theme Toggle Button pojok kanan atas */}
+      <div className="absolute top-4 right-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title={theme === "dark" ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
+          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+      </div>
+
       <div className="max-w-md w-full text-center space-y-6">
         {/* Logo */}
         <Link href="/">

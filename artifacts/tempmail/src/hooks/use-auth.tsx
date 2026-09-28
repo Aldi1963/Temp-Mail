@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string;
   role: "user" | "admin";
   emailVerified: boolean;
+  telegramChatId?: string | null;
   createdAt: string;
 }
 
@@ -19,8 +20,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 async function apiFetch(path: string, options?: RequestInit) {
-  const res = await fetch(path, {
+  const fullPath = path.startsWith("/") ? `${API_BASE}${path}` : `${API_BASE}/${path}`;
+  const res = await fetch(fullPath, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...options,
@@ -48,7 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetchMe(); }, []);
 
   const login = async (email: string, password: string): Promise<{ requires2fa: boolean }> => {
-    const res = await fetch("/api/auth/login", {
+    const fullPath = `${API_BASE}/api/auth/login`;
+    const res = await fetch(fullPath, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -88,5 +93,9 @@ export function useAuth() {
 }
 
 export async function adminFetch(path: string, options?: RequestInit) {
+  return apiFetch(path, options);
+}
+
+export async function userFetch(path: string, options?: RequestInit) {
   return apiFetch(path, options);
 }

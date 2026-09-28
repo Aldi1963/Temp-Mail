@@ -1,6 +1,10 @@
 import { format } from "date-fns";
-import { Search, Mail, MailOpen, AlertCircle, RefreshCw, CheckCheck, ArrowUpDown, Bell, BellOff } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import {
+  Search, Mail, MailOpen, AlertCircle, RefreshCw, CheckCheck,
+  ArrowUpDown, Bell, BellOff, KeyRound, Copy, Check, Star, Trash2,
+  Archive, ArchiveRestore
+} from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +17,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmailMessageSummary } from "@workspace/api-client-react";
+import { userFetch } from "@/hooks/use-auth";
+import { getManageToken } from "@/lib/manage-token";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface InboxListProps {
   messages: EmailMessageSummary[];
@@ -25,12 +43,312 @@ interface InboxListProps {
   onSelectMessage: (id: string) => void;
   onRefresh?: () => void;
   onMarkAllRead?: () => void;
+  onClearInbox?: () => void;
   notifPermission?: NotificationPermission | "unsupported";
   onRequestNotif?: () => void;
+  email: string;
+  onDeselectMessage?: () => void;
 }
 
 type FilterType = "all" | "unread" | "read";
 type SortType = "newest" | "oldest" | "sender";
+
+// Quick detector for OTP in preview/subject
+function extractQuickOtp(text: string): string | null {
+  const match = text.match(/\b(?:code|kode|otp|pin|verifikasi|token|verification)[^\d]{1,20}(\d{4,8})\b/i)
+    || text.match(/\b([0-9]{3}[-\s][0-9]{3})\b/)
+    || text.match(/\b(?:G-|FB-)(\d{5,6})\b/i)
+    || text.match(/\b(\d{6})\b/);
+  return match ? (match[1] || match[0]) : null;
+}
+
+// Clean preview snippet from MIME junk
+function cleanPreviewText(raw: string): string {
+  if (!raw) return "";
+
+  let cleaned = raw;
+
+  // Strip headers like "-Content-Type: ...", "Content-Transfer-Encoding: ...", "Received: ...", etc.
+  cleaned = cleaned.replace(/^-?Content-Type:[^\n\r]*[\r\n]*/gim, "");
+  cleaned = cleaned.replace(/^Content-Transfer-Encoding:[^\n\r]*[\r\n]*/gim, "");
+  cleaned = cleaned.replace(/^Received:[^\n\r]*[\r\n]*/gim, "");
+  cleaned = cleaned.replace(/^ARC-[^\n\r]*[\r\n]*/gim, "");
+  cleaned = cleaned.replace(/^DKIM-[^\n\r]*[\r\n]*/gim, "");
+  cleaned = cleaned.replace(/^--[^\n\r]*[\r\n]*/gim, "");
+
+  // If still contains inline Content-Type / Content-Transfer-Encoding in single line preview
+  cleaned = cleaned.replace(/--?Content-Type:[^;]+;\s*charset=[^\s]+/gi, "");
+  cleaned = cleaned.replace(/Content-Transfer-Encoding:\s*[a-z0-9_-]+/gi, "");
+  cleaned = cleaned.replace(/Â\s*/g, ""); // strip non-breaking space artifacts
+  cleaned = cleaned.replace(/â\u0080\u008C/g, ""); // strip zero-width non-joiner mojibake (ZWNJ)
+  cleaned = cleaned.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ""); // strip zero-width spaces / preheader padding
+
+  // Collapse whitespaces
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+  return cleaned || "Tidak ada cuplikan teks";
+}
+
+// Format date exact like Gmail Android app: "26 Sep", "25 Sep", "07:34"
+function formatGmailDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    return isToday ? format(d, "HH:mm") : format(d, "d MMM");
+  } catch {
+    return "";
+  }
+}
+
+// ── Swipeable row ala Gmail: geser kanan = arsip/kembalikan, geser kiri = hapus ──
+function SwipeableInboxRow({
+  msg,
+  isSelected,
+  onSelect,
+  onCopyOtp,
+  isOtpCopied,
+  isStarred,
+  onToggleStar,
+  onSwipeCommit,
+  swipeRightMode,
+}: {
+  msg: EmailMessageSummary;
+  isSelected: boolean;
+  onSelect: () => void;
+  onCopyOtp: (otp: string) => void;
+  isOtpCopied: boolean;
+  isStarred: boolean;
+  onToggleStar: () => void;
+  onSwipeCommit: (id: string, dir: 1 | -1) => void;
+  swipeRightMode: "archive" | "unarchive";
+}) {
+  const [offset, setOffset] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const tracking = useRef(false);
+  const suppressClick = useRef(false);
+  const rowW = useRef(0);
+
+  const { name, letter, colorClass } = getSenderInfo(msg.from);
+  const inlineOtp = extractQuickOtp(`${msg.subject} ${msg.preview}`);
+  const formattedDate = formatGmailDate(msg.receivedAt);
+  const cleanPreview = cleanPreviewText(msg.preview);
+
+  const THRESHOLD = 90;
+
+  const resetTouch = () => {
+    startX.current = null;
+    startY.current = null;
+    tracking.current = false;
+  };
+
+  const snapBack = () => {
+    setAnimating(true);
+    setOffset(0);
+    resetTouch();
+  };
+
+  const commit = (dir: 1 | -1) => {
+    // Balik dulu, lalu minta konfirmasi lewat dialog di parent
+    snapBack();
+    suppressClick.current = true;
+    setTimeout(() => { suppressClick.current = false; }, 500);
+    onSwipeCommit(msg.id, dir);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    tracking.current = false;
+    rowW.current = (e.currentTarget as HTMLElement).offsetWidth || 300;
+    setAnimating(false);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (startX.current === null || startY.current === null) return;
+    const dx = e.touches[0].clientX - startX.current;
+    const dy = e.touches[0].clientY - startY.current;
+    if (!tracking.current) {
+      if (Math.abs(dx) < 12) return;
+      if (Math.abs(dy) > Math.abs(dx)) { resetTouch(); return; }
+      tracking.current = true;
+    }
+    const w = rowW.current || 300;
+    setOffset(Math.max(-w, Math.min(w, dx)));
+  };
+
+  const handleTouchEnd = () => {
+    if (!tracking.current) { resetTouch(); return; }
+    if (offset >= THRESHOLD) commit(1);
+    else if (offset <= -THRESHOLD) commit(-1);
+    else snapBack();
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (suppressClick.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    onSelect();
+  };
+
+  const revealLeft = offset > 12;
+  const revealRight = offset < -12;
+  const dragT = Math.min(Math.abs(offset), 120);
+
+  return (
+    <div className="relative overflow-hidden">
+      {/* Latar kiri: arsip/kembalikan — terlihat saat geser ke kanan */}
+      <div
+        className="absolute inset-0 flex items-center bg-[#188038] text-white transition-opacity duration-150"
+        style={{ opacity: revealLeft ? 1 : 0 }}
+      >
+        <div className="flex items-center gap-2 pl-5" style={{ transform: `translateX(${dragT * 0.35}px)` }}>
+          {swipeRightMode === "archive" ? <Archive className="h-5 w-5" /> : <ArchiveRestore className="h-5 w-5" />}
+          <span className="text-sm font-semibold">{swipeRightMode === "archive" ? "Arsipkan" : "Kembalikan"}</span>
+        </div>
+      </div>
+      {/* Latar kanan: hapus — terlihat saat geser ke kiri */}
+      <div
+        className="absolute inset-0 flex items-center justify-end bg-[#d93025] text-white transition-opacity duration-150"
+        style={{ opacity: revealRight ? 1 : 0 }}
+      >
+        <div className="flex items-center gap-2 pr-5" style={{ transform: `translateX(${-dragT * 0.35}px)` }}>
+          <span className="text-sm font-semibold">Hapus</span>
+          <Trash2 className="h-5 w-5" />
+        </div>
+      </div>
+
+      {/* Baris pesan (foreground, bisa digeser) */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={snapBack}
+        onClick={handleClick}
+        style={{
+          transform: `translateX(${offset}px)`,
+          transition: animating ? "transform 0.2s ease-out" : "none",
+        }}
+        className="relative bg-background"
+      >
+      <div
+        className={`w-full max-w-full box-border text-left px-3 sm:px-4 py-2.5 sm:py-3 min-h-[72px] hover:bg-muted/30 transition-colors flex items-start gap-3 relative cursor-pointer group ${
+          isSelected ? "bg-muted/50" : ""
+        } ${!msg.isRead ? "bg-primary/[0.03]" : ""}`}
+      >
+        {/* Gmail Solid Circular Avatar */}
+        <div className={`shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs ${colorClass} mt-0.5`}>
+          {letter}
+        </div>
+
+        {/* Gmail Message Body Grid: Ringkas, Bersih & Minimalis */}
+        <div className="flex-1 min-w-0 overflow-hidden">
+          {/* Baris 1: Nama Pengirim + Waktu */}
+          <div className="flex items-center justify-between gap-2 w-full">
+            <span className={`text-xs sm:text-sm truncate flex-1 min-w-0 ${!msg.isRead ? "font-bold text-foreground" : "font-normal text-foreground/80"}`}>
+              {name}
+            </span>
+            <span className={`text-xs whitespace-nowrap shrink-0 ${!msg.isRead ? "font-bold text-primary" : "text-muted-foreground"}`}>
+              {formattedDate}
+            </span>
+          </div>
+
+          {/* Baris 2: Subjek Pesan Saja (Ringkas & Terpotong Rapi) + Bintang */}
+          <div className="flex items-center justify-between gap-2 mt-0.5 w-full">
+            <p className={`text-xs truncate flex-1 min-w-0 ${!msg.isRead ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+              {msg.subject || "(tanpa subjek)"}
+            </p>
+
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleStar();
+              }}
+              className="p-1 text-muted-foreground hover:text-amber-400 transition-colors cursor-pointer shrink-0"
+              title={isStarred ? "Bintang aktif" : "Tandai berbintang"}
+            >
+              <Star className={`h-3.5 w-3.5 ${isStarred ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30 hover:text-muted-foreground"}`} />
+            </span>
+          </div>
+
+          {/* Baris 3 (Hanya jika ada OTP): Badge OTP Minimalis 1-Klik */}
+          {inlineOtp && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[10px] uppercase font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md font-mono">
+                OTP: {inlineOtp}
+              </span>
+              <button
+                type="button"
+                onClick={() => onCopyOtp(inlineOtp)}
+                className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-1 py-0.5 px-2 bg-background rounded-md border border-border/80 shadow-2xs active:scale-95 cursor-pointer"
+              >
+                {isOtpCopied ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+                {isOtpCopied ? "Tersalin" : "Salin"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+// Authentic Gmail Material Avatar Solid Colors (Matching Gmail Android App)
+function getSenderInfo(fromStr: string) {
+  let name = fromStr.split("<")[0].trim().replace(/['"]/g, "");
+  let email = fromStr;
+  const match = fromStr.match(/<([^>]+)>/);
+  if (match) {
+    email = match[1];
+  }
+
+  // Jika nama masih berupa email panjang atau hash SES (e.g. 010001a0dda... @mail.canva.com)
+  if (!name || name === email || name.length > 25 || name.includes("@")) {
+    const domainPart = email.split("@")[1] || "";
+    if (domainPart.includes("canva.com")) name = "Canva";
+    else if (domainPart.includes("google.com") || email.includes("google")) name = "Google";
+    else if (domainPart.includes("tiktok.com")) name = "TikTok";
+    else if (domainPart.includes("instagram.com")) name = "Instagram";
+    else if (domainPart.includes("facebookmail.com")) name = "Facebook";
+    else if (domainPart.includes("github.com")) name = "GitHub";
+    else if (domainPart.includes("telegram.org")) name = "Telegram";
+    else {
+      // Ambil bagian depan sebelum titik/angka
+      const rawUser = email.split("@")[0];
+      name = rawUser.replace(/[^a-zA-Z\s]/g, " ").trim();
+      if (!name) name = domainPart.split(".")[0];
+    }
+  }
+
+  // Capitalize name
+  name = name.charAt(0).toUpperCase() + name.slice(1);
+  const letter = (name[0] || "E").toUpperCase();
+
+  // Solid background colors identical to Gmail Android App
+  const colors = [
+    "bg-[#d93025] text-white", // Google Red
+    "bg-[#1a73e8] text-white", // Google Blue
+    "bg-[#188038] text-white", // Google Green
+    "bg-[#e37400] text-white", // Google Orange
+    "bg-[#a142f4] text-white", // Google Purple
+    "bg-[#12b5cb] text-white", // Google Teal
+    "bg-[#fa7b17] text-white", // Google Amber
+    "bg-[#c2185b] text-white", // Pink
+    "bg-[#00897b] text-white", // Emerald
+  ];
+  const charCode = letter.charCodeAt(0) || 0;
+  const colorClass = colors[charCode % colors.length];
+
+  return { name, email, letter, colorClass };
+}
 
 export function InboxList({
   messages,
@@ -43,8 +361,11 @@ export function InboxList({
   onSelectMessage,
   onRefresh,
   onMarkAllRead,
+  onClearInbox,
   notifPermission,
   onRequestNotif,
+  email,
+  onDeselectMessage,
 }: InboxListProps) {
   const [filter, setFilter] = useState<FilterType>("all");
   const [sort, setSort] = useState<SortType>("newest");
@@ -99,32 +420,8 @@ export function InboxList({
   const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
 
   const filteredMessages = useMemo(() => {
-    let result = messages.filter((msg) => {
-      if (filter === "unread" && msg.isRead) return false;
-      if (filter === "read" && !msg.isRead) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          msg.from.toLowerCase().includes(q) ||
-          msg.subject.toLowerCase().includes(q) ||
-          msg.preview.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-
-    result = [...result].sort((a, b) => {
-      if (sort === "oldest") {
-        return new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
-      }
-      if (sort === "sender") {
-        return a.from.localeCompare(b.from);
-      }
-      return new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
-    });
-
-    return result;
-  }, [messages, filter, search, sort]);
+    return [...messages].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
+  }, [messages]);
 
   const handleRefresh = async () => {
     if (!onRefresh) return;
@@ -133,214 +430,290 @@ export function InboxList({
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
+
   const sortLabel = sort === "newest" ? "Terbaru" : sort === "oldest" ? "Terlama" : "Pengirim";
 
+  const [copiedOtpId, setCopiedOtpId] = useState<string | null>(null);
+
+  const handleCopyOtpInline = (e: React.MouseEvent | null, otp: string, msgId: string) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    navigator.clipboard.writeText(otp);
+    setCopiedOtpId(msgId);
+    setTimeout(() => setCopiedOtpId(null), 2000);
+  };
+
+  const [starredIds, setStarredIds] = useState<Record<string, boolean>>({});
+
+  const toggleStar = (e: React.MouseEvent | null, id: string) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setStarredIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // ── Tab Arsip ala Gmail ──
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedMsgs, setArchivedMsgs] = useState<EmailMessageSummary[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const { toast } = useToast();
+
+  const visibleMessages = showArchived ? archivedMsgs : filteredMessages;
+  const visibleLoading = showArchived ? archivedLoading : isLoading;
+
+  const fetchArchived = async () => {
+    if (!email) return;
+    setArchivedLoading(true);
+    try {
+      const data = await userFetch(`/api/email/inbox?email=${encodeURIComponent(email)}&archived=true`);
+      const list: EmailMessageSummary[] = Array.isArray(data?.messages) ? data.messages : [];
+      setArchivedMsgs([...list].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()));
+    } catch {
+      /* abaikan, tampilkan kosong */
+    } finally {
+      setArchivedLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showArchived) void fetchArchived();
+  }, [showArchived]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Aksi swipe menunggu konfirmasi dialog dulu
+  const [pendingAction, setPendingAction] = useState<{ id: string; dir: 1 | -1 } | null>(null);
+
+  const handleSwipeCommit = (id: string, dir: 1 | -1) => {
+    setPendingAction({ id, dir });
+  };
+
+  const pendingMsg = pendingAction ? visibleMessages.find((m) => m.id === pendingAction.id) ?? null : null;
+  const pendingKind: "archive" | "unarchive" | "delete" | null = !pendingAction
+    ? null
+    : pendingAction.dir === 1
+      ? (showArchived ? "unarchive" : "archive")
+      : "delete";
+
+  const manageHeaders = (): Record<string, string> => {
+    const t = email ? getManageToken(email) : null;
+    return t ? { "X-Manage-Token": t } : {};
+  };
+
+  const requireEmail = (): boolean => {
+    if (email) return true;
+    toast({ title: "Gagal", description: "Tidak ada alamat aktif.", variant: "destructive" });
+    return false;
+  };
+
+  const doArchive = async (id: string, toArchived: boolean): Promise<void> => {
+    if (!requireEmail()) return;
+    try {
+      await userFetch("/api/email/message/archive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...manageHeaders() },
+        body: JSON.stringify({ id, email, archived: toArchived }),
+      });
+      if (showArchived) {
+        setArchivedMsgs((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        onRefresh?.();
+      }
+      if (id === selectedMessageId) onDeselectMessage?.();
+      toast({
+        title: toArchived ? "Pesan diarsipkan" : "Pesan dikembalikan",
+        action: (
+          <ToastAction altText="Urungkan" onClick={() => { void doArchive(id, !toArchived); }}>
+            Urungkan
+          </ToastAction>
+        ),
+      });
+    } catch (e) {
+      toast({ title: "Gagal", description: e instanceof Error ? e.message : "Tidak bisa mengarsipkan. Coba lagi.", variant: "destructive" });
+    }
+  };
+
+  const doDelete = async (id: string): Promise<void> => {
+    if (!requireEmail()) return;
+    try {
+      await userFetch(
+        `/api/email/message?id=${encodeURIComponent(id)}&email=${encodeURIComponent(email)}`,
+        { method: "DELETE", headers: manageHeaders() }
+      );
+      if (showArchived) {
+        setArchivedMsgs((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        onRefresh?.();
+      }
+      if (id === selectedMessageId) onDeselectMessage?.();
+      toast({ title: "Pesan dihapus" });
+    } catch (e) {
+      toast({ title: "Gagal", description: e instanceof Error ? e.message : "Tidak bisa menghapus. Coba lagi.", variant: "destructive" });
+    }
+  };
+
+  const confirmPendingAction = () => {
+    if (!pendingAction || !pendingKind) return;
+    const { id } = pendingAction;
+    setPendingAction(null);
+    if (pendingKind === "delete") void doDelete(id);
+    else void doArchive(id, pendingKind === "archive");
+  };
+
+
+
   return (
-    <div className="flex flex-col h-full bg-card rounded-lg border border-border shadow-sm overflow-hidden flex-1 min-h-[400px] sm:min-h-0">
-      <div className="p-4 border-b border-border space-y-3 bg-muted/20">
-        {/* Search + action buttons */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari email, pengirim..."
-              className="pl-9 bg-background h-9 text-sm"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              data-testid="inbox-search"
-            />
+    <div
+      className="flex flex-col h-full w-full max-w-full overscroll-contain flex-1"
+    >
+      {/* Header bar: Kotak Masuk ala Gmail */}
+      <div className="relative px-4 py-2 flex items-center justify-between">
+        {/* Live Radar Sync Bar: bergerak berdenyut saat polling aktif */}
+        {isAutoRefreshEnabled && (
+          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-muted/30 overflow-hidden">
+            <div className={`h-full bg-primary/80 transition-all ${isFetching ? "w-full animate-pulse" : "w-1/3 animate-[shimmer_2s_infinite]"}`} />
           </div>
+        )}
 
-          {/* Sort dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 text-muted-foreground hover:text-primary"
-                title={`Urutan: ${sortLabel}`}
-              >
-                <ArrowUpDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Urutkan berdasarkan</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className={`text-xs cursor-pointer ${sort === "newest" ? "font-semibold text-primary" : ""}`}
-                onClick={() => setSort("newest")}
-              >
-                Terbaru dulu
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={`text-xs cursor-pointer ${sort === "oldest" ? "font-semibold text-primary" : ""}`}
-                onClick={() => setSort("oldest")}
-              >
-                Terlama dulu
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={`text-xs cursor-pointer ${sort === "sender" ? "font-semibold text-primary" : ""}`}
-                onClick={() => setSort("sender")}
-              >
-                Nama pengirim
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-0.5 rounded-full bg-muted/70 p-1">
+            <button
+              type="button"
+              onClick={() => setShowArchived(false)}
+              className={`px-3 h-7 rounded-full text-xs font-bold transition-colors cursor-pointer ${!showArchived ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Kotak Masuk
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowArchived(true)}
+              className={`px-3 h-7 rounded-full text-xs font-bold transition-colors cursor-pointer ${showArchived ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Arsip
+            </button>
+          </div>
+          {!showArchived && unreadCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-bold">
+              {unreadCount} baru
+            </span>
+          )}
+        </div>
 
-          {unreadCount > 0 && (
+        <div className="flex items-center gap-1">
+          {!showArchived && unreadCount > 0 && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-primary"
+              className="h-9 w-9 sm:h-7 sm:w-7 text-muted-foreground hover:text-primary"
               title="Tandai semua dibaca"
               onClick={onMarkAllRead}
-              data-testid="btn-mark-all-read"
             >
-              <CheckCheck className="h-4 w-4" />
+              <CheckCheck className="h-3.5 w-3.5" />
+            </Button>
+          )}
+
+          {!showArchived && messages.length > 0 && onClearInbox && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 sm:h-7 sm:w-7 text-muted-foreground hover:text-destructive"
+              title="Kosongkan semua pesan"
+              onClick={onClearInbox}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           )}
 
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-primary"
-            title="Refresh inbox (R)"
+            className="h-9 w-9 sm:h-7 sm:w-7 text-muted-foreground hover:text-primary"
+            title="Muat ulang inbox (R)"
             onClick={handleRefresh}
-            data-testid="btn-refresh-inbox"
           >
-            <RefreshCw className={`h-4 w-4 transition-transform ${isRefreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 transition-transform ${isRefreshing ? "animate-spin" : ""}`} />
           </Button>
         </div>
-
-        {/* Filter tabs */}
-        <div className="flex gap-1.5">
-          {(["all", "unread", "read"] as FilterType[]).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? "default" : "outline"}
-              size="sm"
-              className="flex-1 h-8 text-xs"
-              onClick={() => setFilter(f)}
-              data-testid={`filter-${f}`}
-            >
-              {f === "all" ? "Semua" : f === "unread" ? `Belum Dibaca${unreadCount > 0 ? ` (${unreadCount})` : ""}` : "Sudah Dibaca"}
-            </Button>
-          ))}
-        </div>
-
-        {/* Auto-refresh status indicator */}
-        {refreshStatus && (
-          <div
-            className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/80 px-0.5"
-            data-testid="inbox-refresh-status"
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                refreshStatus.state === "fetching"
-                  ? "bg-primary animate-pulse"
-                  : "bg-green-500/70"
-              }`}
-            />
-            <span className="truncate font-medium tabular-nums">{refreshStatus.label}</span>
-          </div>
-        )}
-
-        {/* Notification permission banner */}
-        {notifPermission === "default" && onRequestNotif && (
-          <button
-            onClick={onRequestNotif}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 hover:bg-primary/10 transition-colors text-left"
-          >
-            <Bell className="h-4 w-4 text-primary shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-primary">Aktifkan Notifikasi Browser</p>
-              <p className="text-[11px] text-muted-foreground">Dapat pemberitahuan saat email baru masuk</p>
-            </div>
-          </button>
-        )}
-        {notifPermission === "denied" && (
-          <div className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 text-left">
-            <BellOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <p className="text-[11px] text-muted-foreground">Notifikasi diblokir. Aktifkan di pengaturan browser.</p>
-          </div>
-        )}
       </div>
 
-      <ScrollArea className="flex-1">
-        {isLoading ? (
+      <ScrollArea className="flex-1 w-full max-w-full overflow-hidden">
+        {visibleLoading ? (
           <div className="p-4 space-y-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="animate-pulse flex flex-col gap-2 p-4 rounded-lg border border-border">
-                <div className="flex justify-between">
-                  <div className="h-4 bg-muted rounded w-1/3" />
-                  <div className="h-3 bg-muted rounded w-1/4" />
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse flex items-center gap-3 py-2">
+                <div className="h-10 w-10 rounded-full bg-muted shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 bg-muted rounded w-1/3" />
+                  <div className="h-3 bg-muted rounded w-2/3" />
                 </div>
-                <div className="h-5 bg-muted rounded w-3/4" />
-                <div className="h-4 bg-muted rounded w-full" />
               </div>
             ))}
           </div>
-        ) : filteredMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[300px] text-center px-4">
-            <div className="bg-muted/50 p-4 rounded-full mb-4">
-              {search || filter !== "all" ? (
-                <AlertCircle className="h-8 w-8 text-muted-foreground" />
-              ) : (
-                <Mail className="h-8 w-8 text-muted-foreground" />
-              )}
+        ) : visibleMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-[260px] text-center px-4">
+            <div className="bg-primary/10 p-4 rounded-full mb-3 text-primary border border-primary/20">
+              {showArchived ? <Archive className="h-7 w-7" /> : <Mail className="h-7 w-7 animate-pulse" />}
             </div>
-            <h3 className="text-lg font-medium text-foreground">
-              {search || filter !== "all" ? "Tidak ada yang cocok" : "Inbox kosong"}
+            <h3 className="text-sm font-semibold text-foreground">
+              {showArchived ? "Arsip kosong" : "Menunggu email masuk..."}
             </h3>
-            <p className="text-sm text-muted-foreground mt-1 max-w-[250px]">
-              {search || filter !== "all"
-                ? "Coba ubah filter atau kata kunci pencarian."
-                : "Menunggu email masuk. Akan muncul otomatis di sini."}
+            <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
+              {showArchived
+                ? "Geser pesan ke kanan untuk mengarsipkannya."
+                : "Email yang dikirim ke alamat di atas akan muncul otomatis di sini tanpa reload."}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {filteredMessages.map((msg) => (
-              <button
+          <div className="divide-y divide-border/40">
+            {visibleMessages.map((msg) => (
+              <SwipeableInboxRow
                 key={msg.id}
-                onClick={() => onSelectMessage(msg.id)}
-                className={`w-full text-left p-4 hover:bg-accent/50 transition-colors flex flex-col gap-1 relative ${
-                  selectedMessageId === msg.id ? "bg-accent" : ""
-                } ${!msg.isRead ? "bg-primary/5" : ""}`}
-                data-testid={`msg-item-${msg.id}`}
-              >
-                {!msg.isRead && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                )}
-
-                <div className="flex items-center justify-between w-full mb-1">
-                  <div className="flex items-center gap-2 truncate pr-4">
-                    {msg.isRead ? (
-                      <MailOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-                    ) : (
-                      <Mail className="h-4 w-4 text-primary shrink-0" />
-                    )}
-                    <span className={`text-sm truncate ${!msg.isRead ? "font-bold text-foreground" : "font-medium text-foreground/80"}`}>
-                      {msg.from}
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
-                    {format(new Date(msg.receivedAt), "HH:mm")}
-                  </span>
-                </div>
-
-                <div className={`text-sm truncate ${!msg.isRead ? "font-semibold text-foreground" : "text-foreground/90"}`}>
-                  {msg.subject || "(Tanpa Subjek)"}
-                </div>
-
-                <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                  {msg.preview}
-                </div>
-              </button>
+                msg={msg}
+                isSelected={selectedMessageId === msg.id}
+                onSelect={() => onSelectMessage(msg.id)}
+                onCopyOtp={(otp) => handleCopyOtpInline(null, otp, msg.id)}
+                isOtpCopied={copiedOtpId === msg.id}
+                isStarred={!!starredIds[msg.id]}
+                onToggleStar={() => toggleStar(null, msg.id)}
+                onSwipeCommit={handleSwipeCommit}
+                swipeRightMode={showArchived ? "unarchive" : "archive"}
+              />
             ))}
           </div>
         )}
       </ScrollArea>
+
+      {/* Dialog konfirmasi arsip/hapus ala Gmail */}
+      <AlertDialog open={!!pendingAction} onOpenChange={(o) => { if (!o) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingKind === "delete" ? "Hapus pesan ini?" : pendingKind === "archive" ? "Arsipkan pesan ini?" : "Kembalikan pesan?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingKind === "delete" && (
+                <>Pesan dari <b>{pendingMsg ? getSenderInfo(pendingMsg.from).name : ""}</b> akan dihapus permanen dan tidak bisa dikembalikan.</>
+              )}
+              {pendingKind === "archive" && (
+                <>Pesan dari <b>{pendingMsg ? getSenderInfo(pendingMsg.from).name : ""}</b> akan dipindah ke tab Arsip.</>
+              )}
+              {pendingKind === "unarchive" && (
+                <>Pesan dari <b>{pendingMsg ? getSenderInfo(pendingMsg.from).name : ""}</b> akan kembali ke Kotak Masuk.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPendingAction}
+              className={pendingKind === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            >
+              {pendingKind === "delete" ? "Hapus" : pendingKind === "archive" ? "Arsipkan" : "Kembalikan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

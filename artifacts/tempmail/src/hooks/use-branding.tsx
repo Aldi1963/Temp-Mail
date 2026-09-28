@@ -9,6 +9,7 @@ export interface SiteBranding {
   meta_title?: string;
   meta_keywords?: string;
   footer_text?: string;
+  telegram_bot_username?: string;
 }
 
 export function useBranding() {

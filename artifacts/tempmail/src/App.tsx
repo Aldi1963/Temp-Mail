@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import React, { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,8 +20,50 @@ import StatusPage from "@/pages/status";
 import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
-import { useLocation } from "wouter";
-import { useEffect } from "react";
+
+// Error Boundary to catch any render errors and prevent white blank screens
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("TempMail App Render Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md w-full p-6 rounded-2xl border border-destructive/30 bg-destructive/5 space-y-4">
+            <h2 className="text-lg font-bold text-destructive">Terjadi Kesalahan Aplikasi</h2>
+            <p className="text-xs text-muted-foreground font-mono bg-background p-3 rounded-lg border border-border overflow-auto max-h-32 text-left">
+              {this.state.error?.message || "Unknown error"}
+            </p>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.reload();
+              }}
+              className="w-full py-2.5 px-4 bg-primary text-primary-foreground font-semibold rounded-xl text-sm shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+            >
+              Reset Cache & Muat Ulang
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient();
 
@@ -72,19 +115,21 @@ function Router() {
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <AuthProvider>
-            <ApplyBranding />
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <Router />
-            </WouterRouter>
-          </AuthProvider>
-          <Toaster />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <AuthProvider>
+              <ApplyBranding />
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                <Router />
+              </WouterRouter>
+            </AuthProvider>
+            <Toaster />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

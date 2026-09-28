@@ -1,15 +1,25 @@
 import { useState } from "react";
-import { Plus, X, Check, Inbox } from "lucide-react";
+import { Plus, Check, Inbox, Trash2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useGetInbox } from "@workspace/api-client-react";
 
 interface InboxEntry {
@@ -23,12 +33,16 @@ interface InboxSwitcherProps {
   onSwitch: (email: string) => void;
   onAdd: () => void;
   onRemove: (email: string) => void;
+  className?: string;
+  flat?: boolean;
+  /** Ikon ringkas + badge jumlah untuk dipasang di header mobile */
+  compact?: boolean;
 }
 
 function InboxBadge({ email }: { email: string }) {
   const { data } = useGetInbox(
     { email },
-    { query: { enabled: !!email, refetchInterval: 10000 } }
+    { query: { queryKey: ["getInbox", email], enabled: !!email, refetchInterval: 10000 } }
   );
   const unread = data?.unreadCount ?? 0;
   if (!unread) return null;
@@ -39,91 +53,156 @@ function InboxBadge({ email }: { email: string }) {
   );
 }
 
-export function InboxSwitcher({ activeEmail, inboxList, onSwitch, onAdd, onRemove }: InboxSwitcherProps) {
+export function InboxSwitcher({ activeEmail, inboxList = [], onSwitch, onAdd, onRemove, className, flat, compact }: InboxSwitcherProps) {
   const [open, setOpen] = useState(false);
-
-  const truncate = (email: string) => {
-    if (email.length <= 24) return email;
-    const [user, domain] = email.split("@");
-    return `${user.slice(0, 10)}...@${domain}`;
-  };
+  const [confirmEmail, setConfirmEmail] = useState<string | null>(null);
+  const safeList = Array.isArray(inboxList) ? inboxList : [];
 
   return (
+    <>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 h-8 text-xs relative">
-          <Inbox className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Inboxes</span>
-          {inboxList.length > 0 && (
-            <Badge variant="secondary" className="h-4 min-w-4 text-[10px] px-1">
-              {inboxList.length}
-            </Badge>
-          )}
-        </Button>
+        {compact ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Ganti alamat email"
+            aria-label="Ganti alamat email"
+            className={`relative h-10 w-10 text-muted-foreground hover:text-foreground shrink-0 ${className ?? ""}`}
+          >
+            <Inbox className="h-5 w-5" />
+            {safeList.length > 0 && (
+              <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-[18px] text-center">
+                {safeList.length > 9 ? "9+" : safeList.length}
+              </span>
+            )}
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className={`gap-1.5 h-10 sm:h-8 px-3 sm:px-2.5 text-xs relative font-medium ${flat ? "border-transparent bg-transparent shadow-none hover:bg-muted/60" : "border-border/80 bg-background/80 hover:bg-muted"} ${className ?? ""}`}
+          >
+            <Inbox className="h-3.5 w-3.5 text-primary" />
+            <span className="inline text-xs">Email ({safeList.length})</span>
+          </Button>
+        )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-          Active Inboxes ({inboxList.length})
+      <DropdownMenuContent
+        align="end"
+        sideOffset={8}
+        className="w-[300px] sm:w-[320px] max-w-[90vw] p-2 bg-card border border-border/80 shadow-2xl rounded-2xl z-[100]"
+      >
+        <DropdownMenuLabel className="px-2.5 py-1.5 flex items-center justify-between font-normal">
+          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <Mail className="h-3.5 w-3.5 text-primary" />
+            Daftar Email ({safeList.length})
+          </span>
+          <span className="text-[10px] text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full font-medium">
+            Aktif 30 Hari
+          </span>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="my-1.5 bg-border/60" />
 
-        {inboxList.length === 0 && (
-          <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-            No saved inboxes yet.
+        {safeList.length === 0 ? (
+          <div className="px-3 py-6 text-xs text-muted-foreground text-center">
+            Belum ada kotak masuk tersimpan.
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-[260px] overflow-y-auto pr-0.5">
+            {safeList.map((entry) => (
+              <DropdownMenuItem
+                key={entry.email}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  onSwitch(entry.email);
+                  setOpen(false);
+                }}
+                className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-xs cursor-pointer transition-all border ${
+                  activeEmail === entry.email
+                    ? "bg-primary/10 border-primary/30 text-primary font-medium shadow-xs"
+                    : "bg-muted/20 hover:bg-muted/60 border-transparent text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  {activeEmail === entry.email ? (
+                    <div className="h-2 w-2 rounded-full bg-primary shrink-0 animate-pulse" />
+                  ) : (
+                    <div className="h-2 w-2 rounded-full bg-muted-foreground/30 shrink-0" />
+                  )}
+                  <span
+                    className="font-mono text-xs truncate select-all"
+                    title={entry.email}
+                  >
+                    {entry.email}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <InboxBadge email={entry.email} />
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Hapus email ini dari daftar"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setConfirmEmail(entry.email);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setConfirmEmail(entry.email);
+                      }
+                    }}
+                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            ))}
           </div>
         )}
 
-        {inboxList.map((entry) => (
-          <DropdownMenuItem
-            key={entry.email}
-            className="flex items-center gap-2 cursor-pointer pr-1 group"
-            onClick={() => {
-              onSwitch(entry.email);
-              setOpen(false);
-            }}
-          >
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              {activeEmail === entry.email ? (
-                <Check className="h-3.5 w-3.5 text-primary shrink-0" />
-              ) : (
-                <div className="h-3.5 w-3.5 shrink-0" />
-              )}
-              <span
-                className={`text-xs font-mono truncate ${
-                  activeEmail === entry.email ? "text-primary font-semibold" : ""
-                }`}
-                title={entry.email}
-              >
-                {truncate(entry.email)}
-              </span>
-            </div>
-            <InboxBadge email={entry.email} />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive ml-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(entry.email);
-              }}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </DropdownMenuItem>
-        ))}
-
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="my-1.5 bg-border/60" />
         <DropdownMenuItem
-          className="flex items-center gap-2 cursor-pointer text-primary"
-          onClick={() => {
+          onSelect={(e) => {
+            e.preventDefault();
             onAdd();
             setOpen(false);
           }}
+          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold text-primary hover:bg-primary/10 transition-colors cursor-pointer"
         >
           <Plus className="h-3.5 w-3.5" />
-          <span className="text-xs">Generate new inbox</span>
+          Buat Alamat Email Baru
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <AlertDialog open={!!confirmEmail} onOpenChange={(o) => { if (!o) setConfirmEmail(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Hapus dari daftar?</AlertDialogTitle>
+          <AlertDialogDescription>
+            <span className="font-mono font-semibold text-foreground break-all">{confirmEmail}</span>{" "}
+            akan dilepas dari daftar alamat. Pesan di server tetap ada, tetapi alamat ini tidak lagi tampil di sini.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Batal</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              if (confirmEmail) onRemove(confirmEmail);
+              setConfirmEmail(null);
+            }}
+          >
+            Ya, Hapus
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
