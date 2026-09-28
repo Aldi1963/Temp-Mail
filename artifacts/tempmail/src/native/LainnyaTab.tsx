@@ -163,8 +163,10 @@ export function LainnyaTab({ onOpenPage, onOpenLogin }: Props) {
         : "Masukkan PIN saat ini";
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60">
+    <div>
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="flex items-center h-14 px-4">
           <span className="text-[17px] font-extrabold tracking-tight">Lainnya</span>
         </div>
@@ -306,7 +308,7 @@ export function LainnyaTab({ onOpenPage, onOpenLogin }: Props) {
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground text-center pb-8">TempMail · v1.0.0</p>
+      <p className="text-[11px] text-muted-foreground text-center pb-8">TempMail · v1.1.0</p>
     </div>
   );
 }

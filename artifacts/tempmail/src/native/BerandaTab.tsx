@@ -1,9 +1,9 @@
-import { CheckCheck, LogIn, Mail, Moon, RefreshCw, Sun } from "lucide-react";
+import { useState } from "react";
+import { CheckCheck, Copy, Dices, LogIn, Mail, Moon, RefreshCw, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
-import { EmailPane } from "@/components/email-pane";
-import { useAuth } from "@/hooks/use-auth";
-import { usePin } from "@/hooks/use-pin";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useNativeAuth } from "./useNativeAuth";
 import type { NativeMailbox } from "./useNativeMailbox";
 import { NativeInboxList } from "./NativeInboxList";
 import type { NativeMsg } from "./NativeInboxList";
@@ -13,19 +13,36 @@ interface Props {
   mailbox: NativeMailbox;
   onSelectMessage: (id: string) => void;
   onOpenAccount: () => void;
+  onOpenAddresses: () => void;
 }
 
-export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
+export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddresses }: Props) {
   const { theme, setTheme } = useTheme();
-  const { user } = useAuth();
-  const pin = usePin();
+  const { user } = useNativeAuth();
+  const { toast } = useToast();
+  const [justCopied, setJustCopied] = useState(false);
   const dark = theme === "dark";
-  const messages = ((mailbox.inbox?.messages ?? []) as unknown) as NativeMsg[];
+  const messages = (mailbox.inbox?.messages ?? []) as unknown as NativeMsg[];
+
+  const copyEmail = async () => {
+    if (!mailbox.activeEmail) return;
+    try {
+      await navigator.clipboard.writeText(mailbox.activeEmail);
+      setJustCopied(true);
+      window.setTimeout(() => setJustCopied(false), 1500);
+      toast({ title: "Alamat disalin" });
+    } catch {
+      toast({ title: "Gagal menyalin", variant: "destructive" });
+    }
+  };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+    <div>
       {/* App bar */}
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60">
+      <div
+        className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="flex items-center gap-1 pl-2 pr-1 h-14">
           <span className="w-8 h-8 rounded-[10px] bg-primary flex items-center justify-center ml-1 shrink-0">
             <Mail className="h-4 w-4 text-primary-foreground" />
@@ -56,21 +73,57 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
         </div>
       </div>
 
-      {/* Hero alamat */}
+      {/* Hero alamat aktif */}
       <div className="px-3 pt-3">
-        <div className="rounded-3xl bg-primary/[0.08] border border-primary/20 p-3">
-          <div className="text-[10px] font-bold tracking-[1.5px] text-primary px-1 mb-1">
+        <div className="rounded-3xl bg-primary/[0.08] border border-primary/20 p-4">
+          <div className="text-[10px] font-bold tracking-[1.5px] text-primary mb-1.5">
             ALAMAT AKTIF
           </div>
-          <EmailPane
-            activeEmail={mailbox.activeEmail}
-            setActiveEmail={mailbox.setActiveEmail}
-            hasPin={pin.hasPin}
-            onSetupPin={pin.setupPin}
-            onRemovePin={pin.removePin}
-            onLock={pin.lock}
-            hideTopStatus
-          />
+          {mailbox.activeEmail ? (
+            <>
+              <button type="button" onClick={copyEmail} className="w-full text-left active:opacity-70">
+                <span className="block text-[16px] font-extrabold truncate">
+                  {mailbox.activeEmail}
+                </span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5">
+                  {justCopied ? "Disalin!" : "Ketuk untuk menyalin"}
+                </span>
+              </button>
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={copyEmail}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl bg-primary text-primary-foreground text-[13px] font-bold py-2.5 active:scale-[0.98]"
+                >
+                  <Copy className="h-4 w-4" /> Salin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => mailbox.generateEmail()}
+                  disabled={mailbox.isGenerating}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl border border-primary/40 text-primary text-[13px] font-bold py-2.5 active:scale-[0.98] disabled:opacity-50"
+                >
+                  <Dices className="h-4 w-4" /> {mailbox.isGenerating ? "Membuat…" : "Alamat baru"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenAddresses}
+                  className="inline-flex items-center justify-center rounded-2xl bg-muted text-foreground text-[13px] font-bold px-4 py-2.5 active:scale-[0.98]"
+                >
+                  Kelola
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => mailbox.generateEmail()}
+              disabled={mailbox.isGenerating}
+              className="w-full rounded-2xl bg-primary text-primary-foreground text-[14px] font-extrabold py-3 active:scale-[0.99] disabled:opacity-60"
+            >
+              {mailbox.isGenerating ? "Membuat…" : "Buat alamat email"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -108,6 +161,7 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
         <NativeInboxList
           messages={messages}
           loading={mailbox.inboxLoading}
+          email={mailbox.activeEmail ?? ""}
           onSelect={onSelectMessage}
         />
       </div>

@@ -17,7 +17,7 @@ export function TabBar({ tab, onChange, unread }: Props) {
   ];
   return (
     <nav
-      className="shrink-0 border-t border-border bg-background/95 backdrop-blur z-30"
+      className="sticky bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="flex px-2 pt-1.5 pb-1">

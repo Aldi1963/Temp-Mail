@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ArrowLeft } from "lucide-react";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { useToast } from "@/hooks/use-toast";
-import ApiDocsPage from "@/pages/api-docs";
-import StatusPage from "@/pages/status";
-import LandingPage from "@/pages/landing";
-import PrivacyPage from "@/pages/privacy";
 import { useNativeMailbox } from "./useNativeMailbox";
 import { useNativeSettings } from "./settings";
 import { NativeAuthProvider, useNativeAuth } from "./useNativeAuth";
@@ -16,6 +14,10 @@ import { BerandaTab } from "./BerandaTab";
 import { AlamatTab } from "./AlamatTab";
 import { LainnyaTab } from "./LainnyaTab";
 import { MessagePage } from "./MessagePage";
+import { NativeApiDocsPage } from "./NativeApiDocsPage";
+import { NativeStatusPage } from "./NativeStatusPage";
+import { NativeAboutPage } from "./NativeAboutPage";
+import { NativePrivacyPage } from "./NativePrivacyPage";
 
 export type NativePage = "api-docs" | "status" | "tentang" | "privacy";
 
@@ -26,6 +28,8 @@ const PAGE_TITLES: Record<NativePage, string> = {
   privacy: "Privasi",
 };
 
+// Pola scroll: dokumen yang scroll (bukan container bersarang) agar mulus
+// di WebView Android. Header tiap layar memakai sticky top-0.
 function SubPage({
   title,
   onBack,
@@ -36,8 +40,11 @@ function SubPage({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
-      <div className="shrink-0 border-b border-border/60 bg-background/95 backdrop-blur z-20">
+    <div className="flex-1">
+      <div
+        className="sticky top-0 z-20 border-b border-border/60 bg-background/95 backdrop-blur"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="flex items-center gap-1 px-2 h-14">
           <button
             aria-label="Kembali"
@@ -49,7 +56,7 @@ function SubPage({
           <span className="text-[16px] font-extrabold">{title}</span>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">{children}</div>
+      <div className="pb-8">{children}</div>
     </div>
   );
 }
@@ -92,47 +99,94 @@ function NativeAppInner() {
   const openPage = useCallback((p: NativePage) => setPage(p), []);
   const closePage = useCallback(() => setPage(null), []);
 
+  // Kunci scroll dokumen saat overlay fullscreen terbuka.
+  const overlayOpen = !!messageId || loginOpen;
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [overlayOpen]);
+
+  // Tombol back HP: jangan langsung keluar aplikasi.
+  // Prioritas: pesan → subpage → login → tab beranda → tekan 2x untuk keluar.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let lastBack = 0;
+    let handle: PluginListenerHandle | undefined;
+    App.addListener("backButton", () => {
+      if (messageId) {
+        setMessageId(null);
+        return;
+      }
+      if (loginOpen) {
+        setLoginOpen(false);
+        return;
+      }
+      if (page) {
+        setPage(null);
+        return;
+      }
+      if (tab !== "beranda") {
+        setTab("beranda");
+        return;
+      }
+      const now = Date.now();
+      if (now - lastBack < 2000) {
+        void App.exitApp();
+        return;
+      }
+      lastBack = now;
+      toast({ title: "Tekan sekali lagi untuk keluar" });
+    }).then((h) => {
+      handle = h;
+    });
+    return () => {
+      handle?.remove();
+    };
+  }, [messageId, loginOpen, page, tab, toast]);
+
   if (settings.pinEnabled && !unlocked) {
     return <PinGate onUnlock={() => setUnlocked(true)} />;
   }
 
   return (
-    <div
-      className="min-h-[100dvh] flex flex-col bg-background text-foreground overflow-x-clip"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
-    >
-      {page === null ? (
-        <>
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground overflow-x-clip">
+      <div className="flex-1">
+        {page === null ? (
+          <>
             {tab === "beranda" && (
               <BerandaTab
                 mailbox={mailbox}
                 onSelectMessage={setMessageId}
                 onOpenAccount={() => setTab("lainnya")}
+                onOpenAddresses={() => setTab("alamat")}
               />
             )}
             {tab === "alamat" && <AlamatTab mailbox={mailbox} />}
             {tab === "lainnya" && (
               <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} />
             )}
-          </div>
-          <TabBar tab={tab} onChange={setTab} unread={mailbox.unreadCount} />
-        </>
-      ) : (
-        <SubPage title={PAGE_TITLES[page]} onBack={closePage}>
-          {page === "api-docs" && <ApiDocsPage />}
-          {page === "status" && <StatusPage />}
-          {page === "tentang" && <LandingPage />}
-          {page === "privacy" && <PrivacyPage />}
-        </SubPage>
-      )}
+          </>
+        ) : (
+          <SubPage title={PAGE_TITLES[page]} onBack={closePage}>
+            {page === "api-docs" && <NativeApiDocsPage />}
+            {page === "status" && <NativeStatusPage />}
+            {page === "tentang" && <NativeAboutPage />}
+            {page === "privacy" && <NativePrivacyPage />}
+          </SubPage>
+        )}
+      </div>
+      {page === null && <TabBar tab={tab} onChange={setTab} unread={mailbox.unreadCount} />}
 
       {messageId && mailbox.activeEmail && (
         <MessagePage messageId={messageId} email={mailbox.activeEmail} onBack={() => setMessageId(null)} />
       )}
 
       {loginOpen && (
-        <div className="fixed inset-0 z-[90] bg-background">
+        <div className="fixed inset-0 z-[90] bg-background flex flex-col">
           <NativeLogin onDone={() => setLoginOpen(false)} />
         </div>
       )}
