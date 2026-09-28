@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable } from "@workspace/db";
+import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable, broadcastsTable } from "@workspace/db";
 import { eq, count, desc, gte, gt, sql, and, lt, isNotNull, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
@@ -323,6 +323,57 @@ router.get("/dns-check", async (req, res) => {
   }
 
   res.json(result);
+});
+
+// --- Broadcast admin ---
+// FCM belum dikonfigurasi: broadcast hanya disimpan sebagai riwayat,
+// belum dikirim ke perangkat mana pun (fcmSent selalu false).
+router.post("/broadcast", async (req, res) => {
+  const { title, body } = req.body ?? {};
+  const cleanTitle = String(title ?? "").trim();
+  const cleanBody = String(body ?? "").trim();
+  if (!cleanTitle) {
+    res.status(400).json({ error: "Bad request", message: "Judul wajib diisi." });
+    return;
+  }
+  if (cleanTitle.length > 100) {
+    res.status(400).json({ error: "Bad request", message: "Judul maksimal 100 karakter." });
+    return;
+  }
+  if (!cleanBody) {
+    res.status(400).json({ error: "Bad request", message: "Isi pesan wajib diisi." });
+    return;
+  }
+  if (cleanBody.length > 500) {
+    res.status(400).json({ error: "Bad request", message: "Isi pesan maksimal 500 karakter." });
+    return;
+  }
+  const [row] = await db
+    .insert(broadcastsTable)
+    .values({ title: cleanTitle, body: cleanBody, createdBy: req.session.userId ?? null })
+    .returning({ id: broadcastsTable.id });
+  res.status(201).json({
+    success: true,
+    id: row.id,
+    fcmSent: false,
+    message: "tersimpan, FCM belum aktif",
+  });
+});
+
+router.get("/broadcasts", async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(broadcastsTable)
+    .orderBy(desc(broadcastsTable.createdAt))
+    .limit(20);
+  res.json(rows.map((b) => ({
+    id: b.id,
+    title: b.title,
+    body: b.body,
+    createdBy: b.createdBy,
+    createdAt: b.createdAt,
+    fcmSent: b.fcmSent ?? false,
+  })));
 });
 
 export { router as adminRouter };

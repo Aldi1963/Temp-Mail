@@ -146,6 +146,19 @@ export const activityLogsTable = pgTable("activity_logs", {
 
 export type ActivityLog = typeof activityLogsTable.$inferSelect;
 
+// Riwayat broadcast/pengumuman admin. FCM belum dikonfigurasi,
+// jadi fcmSent selalu false sampai integrasi FCM ditambahkan.
+export const broadcastsTable = pgTable("broadcasts", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  fcmSent: boolean("fcm_sent").notNull().default(false),
+});
+
+export type Broadcast = typeof broadcastsTable.$inferSelect;
+
 export const insertEmailAddressSchema = createInsertSchema(emailAddressesTable);
 export const insertMessageSchema = createInsertSchema(messagesTable);
 export const insertUserSchema = createInsertSchema(usersTable);
