@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, userTwoFactorTable, activityLogsTable, emailVerificationTokensTable } from "@workspace/db";
+import { usersTable, userTwoFactorTable, activityLogsTable, emailVerificationTokensTable, nativeTokensTable } from "@workspace/db";
 import { eq, count, and, gt, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import { requireAuth } from "../lib/auth.js";
+import { requireAuth, hashNativeToken, extractNativeToken } from "../lib/auth.js";
 import { encryptTotpSecret, decryptTotpSecret, isEncryptedTotpSecret } from "../lib/totp-crypto.js";
 
 declare module "express-session" {
@@ -52,6 +52,18 @@ const registerLimiter = rateLimit({
     error: "Too Many Requests",
     message: "Terlalu banyak percobaan pendaftaran. Coba lagi dalam 1 jam.",
   },
+});
+
+const nativeTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too Many Requests",
+    message: "Terlalu banyak percobaan. Coba lagi dalam 15 menit.",
+  },
+  skipSuccessfulRequests: true,
 });
 
 async function logActivity(
@@ -193,6 +205,88 @@ router.get("/me", requireAuth, async (req, res) => {
     telegramChatId: user.telegramChatId,
     createdAt: user.createdAt,
   });
+});
+
+// ─── NATIVE TOKEN (login persisten aplikasi Android) ─────────────────────────
+// Cookie sesi tidak bertahan di WebView (origin https://localhost), jadi
+// aplikasi memakai token bearer tm_* berumur 365 hari sebagai pengganti sesi.
+
+router.post("/native-token", nativeTokenLimiter, async (req, res) => {
+  const { email, password, name } = req.body ?? {};
+
+  if (!email || !password) {
+    res.status(400).json({ error: "Bad request", message: "Email dan password wajib diisi." });
+    return;
+  }
+
+  const results = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email.toLowerCase().trim()))
+    .limit(1);
+  if (results.length === 0) {
+    res.status(401).json({ error: "Unauthorized", message: "Email atau password salah." });
+    return;
+  }
+
+  const user = results[0];
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) {
+    res.status(401).json({ error: "Unauthorized", message: "Email atau password salah." });
+    return;
+  }
+
+  if (user.suspended) {
+    res.status(403).json({ error: "Forbidden", message: "Akun dinonaktifkan. Hubungi administrator." });
+    return;
+  }
+
+  // Token berumur 1 tahun tidak boleh melewati 2FA: wajib dimatikan dulu di web.
+  const tfa = await db
+    .select()
+    .from(userTwoFactorTable)
+    .where(eq(userTwoFactorTable.userId, user.id))
+    .limit(1);
+  if (tfa.length > 0 && tfa[0].enabled) {
+    res.status(403).json({
+      error: "Forbidden",
+      message: "Akun memakai 2FA. Nonaktifkan 2FA di web sebelum membuat token aplikasi.",
+    });
+    return;
+  }
+
+  const rawToken = `tm_${randomBytes(32).toString("hex")}`;
+  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  await db.insert(nativeTokensTable).values({
+    userId: user.id,
+    tokenHash: hashNativeToken(rawToken),
+    name: typeof name === "string" && name.trim() ? name.trim().slice(0, 64) : "android",
+    expiresAt,
+  });
+
+  await logActivity(user.id, "native_token_created", "Token aplikasi Android dibuat");
+
+  res.json({
+    token: rawToken,
+    user: { id: user.id, email: user.email, role: user.role, emailVerified: user.emailVerified },
+  });
+});
+
+router.delete("/native-token", async (req, res) => {
+  const token = extractNativeToken(req);
+  if (!token) {
+    res.status(404).json({ error: "Not Found", message: "Token tidak ditemukan." });
+    return;
+  }
+  const deleted = await db
+    .delete(nativeTokensTable)
+    .where(eq(nativeTokensTable.tokenHash, hashNativeToken(token)))
+    .returning({ id: nativeTokensTable.id });
+  if (deleted.length === 0) {
+    res.status(404).json({ error: "Not Found", message: "Token tidak ditemukan." });
+    return;
+  }
+  res.json({ revoked: true });
 });
 
 // ─── EMAIL VERIFICATION ───────────────────────────────────────────────────────

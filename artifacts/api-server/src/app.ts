@@ -6,6 +6,7 @@ import connectPgSimple from "connect-pg-simple";
 import { pool } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { nativeTokenAuth } from "./lib/auth";
 
 const PgSession = connectPgSimple(session);
 
@@ -92,6 +93,11 @@ app.use(
     },
   }),
 );
+
+// Token bearer tm_* untuk aplikasi Android (Capacitor): cookie sesi SameSite=Lax
+// tidak bertahan di WebView (origin https://localhost), jadi token ini mengisi
+// req.session.userId agar auth berbasis sesi tetap berjalan.
+app.use(nativeTokenAuth);
 
 
 // Serve static frontend build and SPA fallback for routes like /admin, /dashboard, /login, etc.

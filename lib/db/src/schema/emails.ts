@@ -77,6 +77,16 @@ export const apiKeysTable = pgTable("api_keys", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [index("idx_api_keys_key_prefix").on(t.keyPrefix)]);
 
+export const nativeTokensTable = pgTable("native_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  name: text("name").notNull().default("android"),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [index("idx_native_tokens_user_id").on(t.userId)]);
+
 export const webhooksTable = pgTable("webhooks", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),

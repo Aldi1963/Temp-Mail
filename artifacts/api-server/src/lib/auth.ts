@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { db } from "@workspace/db";
-import { usersTable, apiKeysTable } from "@workspace/db";
+import { createHash } from "crypto";
+import { usersTable, apiKeysTable, nativeTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
@@ -119,4 +120,61 @@ export async function publicOrApiKey(_req: Request, _res: Response, next: NextFu
   // sedangkan operasi destruktif (/reset, /destroy) wajib bukti kepemilikan
   // (manage token / sesi pemilik / API key pemilik).
   return next();
+}
+
+// ─── NATIVE TOKEN (aplikasi Android) ─────────────────────────────────────────
+// Capacitor WebView berjalan di origin https://localhost sehingga cookie sesi
+// SameSite=Lax tidak bertahan antar request. Token bearer tm_* (tm_ + 64 hex)
+// menjadi pengganti sesi untuk aplikasi native. Token valid → req.session.userId
+// diisi agar semua cek sesi existing (requireAuth dll) berjalan. Token salah /
+// tidak ada → lanjut tanpa user (route membalas 401 sendiri seperti biasa).
+// Alur cookie session & X-API-Key yang sudah ada tidak disentuh.
+
+const NATIVE_TOKEN_RE = /^Bearer\s+(tm_[0-9a-f]{64})$/i;
+
+/** Ambil token native dari header Authorization (dinormalisasi ke lowercase). */
+export function extractNativeToken(req: Request): string | null {
+  const raw = readSingleHeader(req.headers["authorization"]);
+  if (!raw) return null;
+  const m = NATIVE_TOKEN_RE.exec(raw.trim().toLowerCase());
+  return m ? m[1] : null;
+}
+
+/** sha256 hex dari token mentah — yang disimpan di DB hanya hash ini. */
+export function hashNativeToken(token: string): string {
+  return createHash("sha256").update(token.toLowerCase(), "utf8").digest("hex");
+}
+
+/** Dipasang di app.ts setelah session, sebelum routes. */
+export async function nativeTokenAuth(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if (req.session?.userId) return next(); // sesi cookie sudah cukup
+    const hasAuthHeader = !!readSingleHeader(req.headers["authorization"]);
+    const token = extractNativeToken(req);
+    if (hasAuthHeader) {
+      const h = readSingleHeader(req.headers["authorization"]) ?? "";
+      const parts = h.split(" ");
+    }
+    if (!token) return next();
+    const rows = await db
+      .select()
+      .from(nativeTokensTable)
+      .where(eq(nativeTokensTable.tokenHash, hashNativeToken(token)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return next();
+    if (row.expiresAt && row.expiresAt < new Date()) return next();
+    const users = await db.select().from(usersTable).where(eq(usersTable.id, row.userId)).limit(1);
+    const user = users[0];
+    req.session.userId = user.id;
+    req.session.userRole = user.role;
+    // fire-and-forget: jangan menahan response
+    db.update(nativeTokensTable)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(nativeTokensTable.id, row.id))
+      .catch(() => {});
+    return next();
+  } catch {
+    return next(); // jangan merusak request bila DB bermasalah
+  }
 }
