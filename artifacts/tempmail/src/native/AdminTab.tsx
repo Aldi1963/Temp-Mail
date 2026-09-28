@@ -15,7 +15,9 @@ import { nativeFetch } from "./api";
 import { ErrorBox, LoadingBlock } from "./AdminShared";
 import { AdminUsers } from "./AdminUsers";
 import { AdminDomains } from "./AdminDomains";
-// Komponen seksi Broadcast, Server, Maintenance ditambahkan pada commit bagian 3.
+import { AdminBroadcast } from "./AdminBroadcast";
+import { AdminServer } from "./AdminServer";
+import { AdminMaintenance } from "./AdminMaintenance";
 
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -194,18 +196,6 @@ function AdminDashboard() {
   );
 }
 
-// Placeholder sementara untuk seksi yang dibangun di commit berikutnya.
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="px-4 pt-10 pb-6 text-center">
-      <p className="text-[14px] font-extrabold">Bagian {label}</p>
-      <p className="text-[12px] text-muted-foreground mt-1">
-        Sedang dalam pengembangan.
-      </p>
-    </div>
-  );
-}
-
 export function AdminTab() {
   const [section, setSection] = useState<AdminSection>("dashboard");
 
@@ -248,9 +238,9 @@ export function AdminTab() {
       {section === "dashboard" && <AdminDashboard />}
       {section === "users" && <AdminUsers />}
       {section === "domains" && <AdminDomains />}
-      {section === "broadcast" && <ComingSoon label="Broadcast" />}
-      {section === "server" && <ComingSoon label="Server" />}
-      {section === "maintenance" && <ComingSoon label="Maintenance" />}
+      {section === "broadcast" && <AdminBroadcast />}
+      {section === "server" && <AdminServer />}
+      {section === "maintenance" && <AdminMaintenance />}
     </div>
   );
 }
