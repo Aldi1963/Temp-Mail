@@ -172,7 +172,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="gap-2 cursor-pointer px-3 py-2 min-[400px]:hidden"
+                className="gap-2 cursor-pointer px-3 py-2 sm:hidden"
               >
                 {theme === "dark"
                   ? <Sun className="h-4 w-4 text-muted-foreground" />
@@ -193,7 +193,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             title={theme === "dark" ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
-            className="hidden min-[400px]:flex h-10 w-10 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground shrink-0"
+            className="hidden sm:flex h-10 w-10 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground shrink-0"
           >
             {theme === "dark"
               ? <Sun className="h-4 w-4" />
