@@ -6,8 +6,9 @@ import { eq, count, and, gt, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { requireAuth } from "../lib/auth.js";
+import { encryptTotpSecret, decryptTotpSecret, isEncryptedTotpSecret } from "../lib/totp-crypto.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -27,6 +28,19 @@ const loginLimiter = rateLimit({
     message: "Terlalu banyak percobaan login. Coba lagi dalam 15 menit.",
   },
   skipSuccessfulRequests: true,
+});
+
+const verify2faLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Batasi per IP + akun (sesi pending2fa) agar satu IP tidak bisa brute-force banyak akun
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? "")}:${(req.session as any)?.pending2fa?.userId ?? "anon"}`,
+  message: {
+    error: "Too Many Requests",
+    message: "Terlalu banyak percobaan kode 2FA. Coba lagi dalam 15 menit.",
+  },
 });
 
 const registerLimiter = rateLimit({
@@ -66,8 +80,8 @@ router.post("/register", registerLimiter, async (req, res) => {
     return;
   }
 
-  if (typeof password !== "string" || password.length < 6) {
-    res.status(400).json({ error: "Bad request", message: "Password minimal 6 karakter." });
+  if (typeof password !== "string" || password.length < 8) {
+    res.status(400).json({ error: "Bad request", message: "Password minimal 8 karakter." });
     return;
   }
 
@@ -127,6 +141,11 @@ router.post("/login", loginLimiter, async (req, res) => {
     return;
   }
 
+  if (user.suspended) {
+    res.status(403).json({ error: "Forbidden", message: "Akun dinonaktifkan. Hubungi administrator." });
+    return;
+  }
+
   const tfa = await db
     .select()
     .from(userTwoFactorTable)
@@ -166,32 +185,27 @@ router.get("/me", requireAuth, async (req, res) => {
     return;
   }
   const user = results[0];
-  res.json({ id: user.id, email: user.email, role: user.role, emailVerified: user.emailVerified, createdAt: user.createdAt });
+  res.json({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    emailVerified: user.emailVerified,
+    telegramChatId: user.telegramChatId,
+    createdAt: user.createdAt,
+  });
 });
 
 // ─── EMAIL VERIFICATION ───────────────────────────────────────────────────────
 
-router.post("/send-verification", requireAuth, async (req, res) => {
-  const userId = req.session.userId!;
-  const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  const user = users[0];
-
-  if (user.emailVerified) {
-    res.status(400).json({ error: "Bad request", message: "Email sudah diverifikasi." });
-    return;
-  }
-
-  const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  await db.insert(emailVerificationTokensTable).values({ userId, token, expiresAt });
-
-  const base = process.env.APP_BASE_URL || "";
-  const verifyUrl = `${base}/verify-email?token=${token}`;
-
-  await logActivity(userId, "verification_sent", "Link verifikasi email dibuat");
-
-  res.json({ verifyUrl, message: "Link verifikasi berhasil dibuat." });
+router.post("/send-verification", requireAuth, async (_req, res) => {
+  // Verifikasi email DINONAKTIFKAN: tidak ada layanan SMTP yang terkonfigurasi,
+  // dan implementasi sebelumnya hanya mengembalikan URL verifikasi tanpa
+  // benar-benar mengirim email (verifikasi semu). Jangan aktifkan kembali
+  // sebelum ada pengiriman email sungguhan.
+  res.status(410).json({
+    error: "Gone",
+    message: "Verifikasi email dinonaktifkan: server belum terhubung ke layanan pengiriman email.",
+  });
 });
 
 router.post("/verify-email", async (req, res) => {
@@ -237,7 +251,7 @@ router.post("/verify-email", async (req, res) => {
 
 // ─── 2FA ─────────────────────────────────────────────────────────────────────
 
-router.post("/2fa/verify-login", async (req, res) => {
+router.post("/2fa/verify-login", verify2faLimiter, async (req, res) => {
   const pending = req.session.pending2fa;
   if (!pending) {
     res.status(400).json({ error: "Bad request", message: "Tidak ada sesi 2FA yang menunggu." });
@@ -262,7 +276,7 @@ router.post("/2fa/verify-login", async (req, res) => {
   }
 
   const isValid = speakeasy.totp.verify({
-    secret: tfa[0].secret,
+    secret: decryptTotpSecret(tfa[0].secret),
     encoding: "base32",
     token: String(token),
     window: 1,
@@ -277,6 +291,7 @@ router.post("/2fa/verify-login", async (req, res) => {
     }
     const backupIdx = backupCodes.indexOf(String(token));
     if (backupIdx === -1) {
+      await logActivity(pending.userId, "login_2fa_failed", "Percobaan kode 2FA gagal");
       res.status(401).json({ error: "Unauthorized", message: "Kode 2FA tidak valid." });
       return;
     }
@@ -290,6 +305,11 @@ router.post("/2fa/verify-login", async (req, res) => {
   req.session.userId = pending.userId;
   req.session.userRole = pending.userRole;
   delete req.session.pending2fa;
+
+  // Migrasi malas: enkripsi secret lama yang masih plaintext
+  if (!isEncryptedTotpSecret(tfa[0].secret)) {
+    await db.update(userTwoFactorTable).set({ secret: encryptTotpSecret(decryptTotpSecret(tfa[0].secret)) }).where(eq(userTwoFactorTable.userId, pending.userId));
+  }
 
   const users = await db
     .select()
@@ -331,10 +351,10 @@ router.post("/2fa/setup", requireAuth, async (req, res) => {
 
   let secret: string;
   if (existing.length > 0) {
-    secret = existing[0].secret;
+    secret = decryptTotpSecret(existing[0].secret);
   } else {
     secret = speakeasy.generateSecret({ length: 20 }).base32;
-    await db.insert(userTwoFactorTable).values({ userId, secret });
+    await db.insert(userTwoFactorTable).values({ userId, secret: encryptTotpSecret(secret) });
   }
 
   const otpauth = speakeasy.otpauthURL({
@@ -369,7 +389,7 @@ router.post("/2fa/enable", requireAuth, async (req, res) => {
   }
 
   const isValid = speakeasy.totp.verify({
-    secret: tfa[0].secret,
+    secret: decryptTotpSecret(tfa[0].secret),
     encoding: "base32",
     token: String(token),
     window: 1,
@@ -377,6 +397,11 @@ router.post("/2fa/enable", requireAuth, async (req, res) => {
   if (!isValid) {
     res.status(401).json({ error: "Unauthorized", message: "Kode verifikasi tidak valid." });
     return;
+  }
+
+  // Migrasi malas: enkripsi secret lama yang masih plaintext
+  if (!isEncryptedTotpSecret(tfa[0].secret)) {
+    await db.update(userTwoFactorTable).set({ secret: encryptTotpSecret(decryptTotpSecret(tfa[0].secret)) }).where(eq(userTwoFactorTable.userId, userId));
   }
 
   const backupCodes = Array.from({ length: 8 }, () =>
@@ -414,7 +439,7 @@ router.post("/2fa/disable", requireAuth, async (req, res) => {
   }
 
   const isValidDisable = speakeasy.totp.verify({
-    secret: tfa[0].secret,
+    secret: decryptTotpSecret(tfa[0].secret),
     encoding: "base32",
     token: String(token),
     window: 1,
@@ -443,8 +468,8 @@ router.post("/change-password", requireAuth, async (req, res) => {
     return;
   }
 
-  if (typeof newPassword !== "string" || newPassword.length < 6) {
-    res.status(400).json({ error: "Bad request", message: "Password baru minimal 6 karakter." });
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    res.status(400).json({ error: "Bad request", message: "Password baru minimal 8 karakter." });
     return;
   }
 

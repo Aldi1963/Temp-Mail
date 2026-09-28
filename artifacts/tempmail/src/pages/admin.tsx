@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  Mail, Users, Inbox, Settings, Globe,
-  Trash2, ShieldCheck, ShieldX, RefreshCw, Save, PlusCircle, X,
+  Users, Mail, Inbox, Globe, Settings, Palette,
+  Search, Shield, KeyRound, ExternalLink, ChevronRight,
+  Trash2, ShieldCheck, ShieldX, RefreshCw, Save, PlusCircle, X, CheckCircle2,
   BarChart2, ToggleLeft, ToggleRight, LayoutDashboard, LogOut,
-  Menu, Megaphone, Palette, Zap, Tag, Info, AlertTriangle, CheckCircle,
-  Home, ChevronRight, Image, FileText, Search, Copy, Key, ExternalLink,
-  KeyRound, TrendingUp, Activity, Clock
+  Home, Activity, TrendingUp, TrendingDown, AlertTriangle, Eye, EyeOff, Menu,
+  Megaphone, ShieldAlert, Sparkles, Image, Zap, Sun, Moon, Send, FileText,
+  Info, CheckCircle, Key, Copy, MoreVertical, Ban, Plus
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -26,14 +27,35 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { useTheme } from "@/components/theme-provider";
+// Format timestamp (ISO UTC dari server) ke WIB secara eksplisit,
+// agar tidak tergantung zona waktu browser/VPS.
+function formatWib(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  const parts = new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((x) => x.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")} ${get("year")}, ${get("hour")}:${get("minute")} WIB`;
+}
 
 type Section = "overview" | "general" | "web" | "domains" | "users" | "stats";
 
 interface AdminStats { totalUsers: number; totalEmails: number; totalMessages: number; }
-interface AdminUser { id: number; email: string; role: string; createdAt: string; }
+interface AdminUser { id: number; email: string; role: string; suspended: boolean; createdAt: string; emailCount: number; messageCount: number; }
 interface DetailedStats {
   activeEmails: number;
   emailsToday: number;
@@ -41,6 +63,11 @@ interface DetailedStats {
   messagesToday: number;
   emailsPerDay: { date: string; count: number }[];
   messagesPerDay: { date: string; count: number }[];
+  emailsYesterday: number;
+  messagesYesterday: number;
+  newUsersPrevWeek: number;
+  emailsThisWeek: number;
+  messagesThisWeek: number;
 }
 interface SiteSettings {
   site_name: string; default_ttl_minutes: string; max_inboxes: string;
@@ -51,10 +78,15 @@ interface SiteSettings {
   require_login_to_generate: string; max_emails_per_day: string;
   show_qr_by_default: string; auto_copy_on_generate: string;
   announcement_enabled: string; announcement_text: string; announcement_type: string;
+  telegram_bot_token?: string; telegram_chat_id?: string; telegram_forward_enabled?: string;
+  telegram_bot_username?: string;
 }
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 async function adminApi(path: string, opts?: RequestInit) {
-  const res = await fetch(path, {
+  const fullPath = path.startsWith("/") ? `${BASE}${path}` : `${BASE}/${path}`;
+  const res = await fetch(fullPath, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...opts,
@@ -72,6 +104,134 @@ const NAV = [
   { id: "users" as Section, icon: Users, label: "Pengguna" },
   { id: "stats" as Section, icon: BarChart2, label: "Statistik" },
 ];
+
+/* ── Desain admin: header editorial + tile statistik gradient ── */
+
+const TONES = {
+  violet: { bg: "from-violet-500/[0.13] via-violet-500/[0.05] to-transparent", text: "text-violet-600 dark:text-violet-400", blob: "bg-violet-500" },
+  primary: { bg: "from-primary/[0.13] via-primary/[0.05] to-transparent", text: "text-primary", blob: "bg-primary" },
+  emerald: { bg: "from-emerald-500/[0.13] via-emerald-500/[0.05] to-transparent", text: "text-emerald-600 dark:text-emerald-400", blob: "bg-emerald-500" },
+  cyan: { bg: "from-cyan-500/[0.13] via-cyan-500/[0.05] to-transparent", text: "text-cyan-600 dark:text-cyan-400", blob: "bg-cyan-500" },
+  orange: { bg: "from-orange-500/[0.13] via-orange-500/[0.05] to-transparent", text: "text-orange-600 dark:text-orange-400", blob: "bg-orange-500" },
+} as const;
+
+type Tone = keyof typeof TONES;
+
+function PageHeader({ eyebrow, title, desc, right }: { eyebrow: string; title: string; desc: string; right?: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{eyebrow}</p>
+        <h1 className="text-2xl sm:text-[28px] font-extrabold tracking-tight mt-1.5">{title}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{desc}</p>
+      </div>
+      {right ? <div className="flex items-center gap-2 shrink-0 pt-1">{right}</div> : null}
+    </div>
+  );
+}
+
+/* Perbandingan periode: null = periode lalu nol & sekarang ada (tampil "baru") */
+function pctChange(curr: number, prev: number): number | null {
+  if (prev === 0) return curr === 0 ? 0 : null;
+  return ((curr - prev) / prev) * 100;
+}
+function fmtPct(v: number): string {
+  const r = Math.round(v * 10) / 10;
+  return (r > 0 ? "+" : "") + String(r).replace(".", ",") + "%";
+}
+
+function StatTile({ icon: Icon, label, value, tone = "primary", loading, trend, foot }: {
+  icon: any; label: string; value: number | string; tone?: Tone; loading?: boolean;
+  trend?: { pct: number | null; label: string }; foot?: string;
+}) {
+  const t = TONES[tone];
+  const up = trend && (trend.pct === null || trend.pct >= 0);
+  return (
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${t.bg} ring-1 ring-inset ring-foreground/[0.06] p-3.5 sm:p-4`}>
+      <div className={`pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full ${t.blob} opacity-[0.16] blur-2xl`} />
+      <div className="relative">
+        <div className="h-9 w-9 rounded-xl bg-background/80 dark:bg-background/50 backdrop-blur flex items-center justify-center shadow-sm ring-1 ring-inset ring-foreground/[0.06]">
+          <Icon className={`h-[18px] w-[18px] ${t.text}`} />
+        </div>
+        {loading ? (
+          <Skeleton className="h-8 w-16 mt-3" />
+        ) : (
+          <div className="mt-3 text-[26px] sm:text-3xl font-extrabold tracking-tight tabular-nums leading-none">
+            {typeof value === "number" ? value.toLocaleString("id-ID") : value}
+          </div>
+        )}
+        <div className="text-[11px] sm:text-xs text-muted-foreground mt-1.5 leading-tight">{label}</div>
+        {!loading && trend && (
+          <div className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold tabular-nums ${up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            {trend.pct === null ? (
+              <><TrendingUp className="h-3 w-3" /><span>baru {trend.label}</span></>
+            ) : trend.pct === 0 ? (
+              <span className="text-muted-foreground font-medium">tetap {trend.label}</span>
+            ) : (
+              <>{up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}<span>{fmtPct(trend.pct)} {trend.label}</span></>
+            )}
+          </div>
+        )}
+        {!loading && !trend && foot && (
+          <div className="mt-1.5 text-[11px] font-medium text-muted-foreground tabular-nums">{foot}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatSectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{children}</h3>
+  );
+}
+
+function StatRow({ icon: Icon, label, value, tone = "primary", loading, trend, foot }: {
+  icon: any; label: string; value: number | string; tone?: Tone; loading?: boolean;
+  trend?: { pct: number | null; label: string }; foot?: string;
+}) {
+  const t = TONES[tone];
+  const up = trend && (trend.pct === null || trend.pct >= 0);
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className={`h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br ${t.bg} ring-1 ring-inset ring-foreground/[0.06] flex items-center justify-center`}>
+        <Icon className={`h-[18px] w-[18px] ${t.text}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium leading-tight">{label}</div>
+        {!loading && trend && (
+          <div className={`mt-0.5 flex items-center gap-1 text-[11px] font-semibold tabular-nums whitespace-nowrap ${up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            {trend.pct === null ? (
+              <><TrendingUp className="h-3 w-3 shrink-0" /><span>baru {trend.label}</span></>
+            ) : trend.pct === 0 ? (
+              <span className="text-muted-foreground font-medium">tetap {trend.label}</span>
+            ) : (
+              <>{up ? <TrendingUp className="h-3 w-3 shrink-0" /> : <TrendingDown className="h-3 w-3 shrink-0" />}<span>{fmtPct(trend.pct)} {trend.label}</span></>
+            )}
+          </div>
+        )}
+        {!loading && !trend && foot && (
+          <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">{foot}</div>
+        )}
+      </div>
+      {loading ? (
+        <Skeleton className="h-7 w-14 shrink-0" />
+      ) : (
+        <div className="text-[22px] font-extrabold tracking-tight tabular-nums leading-none shrink-0">
+          {typeof value === "number" ? value.toLocaleString("id-ID") : value}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const QUICK_DESC: Record<string, string> = {
+  general: "Batas, durasi & kontrol akses",
+  web: "Branding, SEO & tampilan",
+  domains: "Kelola domain pengirim",
+  users: "Kelola akun pengguna",
+  stats: "Grafik & angka penggunaan",
+};
 
 function BrandingImageField({
   label, hint, value, onChange, previewClass, maxKB = 500,
@@ -121,20 +281,20 @@ function BrandingImageField({
   const hasValue = value && value.length > 0;
 
   return (
-    <div className="space-y-2 p-3 rounded-xl border border-border bg-muted/20">
-      <div className="flex items-center justify-between gap-2">
-        <Label className="font-semibold">{label}</Label>
-        <div className="flex gap-1">
-          <Button type="button" size="sm" variant={mode === "upload" ? "default" : "ghost"} className="h-7 px-2 text-xs" onClick={() => setMode("upload")}>
+    <div className="space-y-3 p-3 sm:p-3.5 rounded-xl border border-border bg-muted/20 w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+        <Label className="font-semibold text-xs sm:text-sm">{label}</Label>
+        <div className="flex gap-1 shrink-0 self-start sm:self-auto">
+          <Button type="button" size="sm" variant={mode === "upload" ? "default" : "outline"} className="h-6 sm:h-7 px-2.5 text-[11px] sm:text-xs" onClick={() => setMode("upload")} aria-label={`${label}: mode upload file`}>
             Upload File
           </Button>
-          <Button type="button" size="sm" variant={mode === "url" ? "default" : "ghost"} className="h-7 px-2 text-xs" onClick={() => setMode("url")}>
+          <Button type="button" size="sm" variant={mode === "url" ? "default" : "outline"} className="h-6 sm:h-7 px-2.5 text-[11px] sm:text-xs" onClick={() => setMode("url")} aria-label={`${label}: mode URL`}>
             URL
           </Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-2.5 sm:gap-3 w-full">
         <div className={`shrink-0 border border-border bg-background flex items-center justify-center overflow-hidden ${previewClass}`}>
           {hasValue ? (
             <img src={value} alt="preview" className="h-full w-full object-contain" />
@@ -144,31 +304,33 @@ function BrandingImageField({
         </div>
         <div className="flex-1 min-w-0 space-y-2">
           {mode === "upload" ? (
-            <>
+            <div className="w-full overflow-hidden">
               <input
                 type="file"
+                aria-label={`Pilih file ${label}`}
                 accept="image/png,image/svg+xml,image/jpeg,image/jpg,image/x-icon,image/vnd.microsoft.icon"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) handleFile(f);
                   e.target.value = "";
                 }}
-                className="block text-xs file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground file:text-xs file:cursor-pointer file:hover:bg-primary/90 cursor-pointer"
+                className="block w-full max-w-full text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground file:text-xs file:font-medium file:cursor-pointer file:hover:bg-primary/90 cursor-pointer"
                 disabled={uploading}
               />
-            </>
+            </div>
           ) : (
             <Input
               value={value}
               onChange={(e) => onChange(e.target.value)}
+              aria-label={`URL ${label}`}
               placeholder="https://example.com/logo.png"
-              className="h-8 text-sm font-mono"
+              className="h-8 text-xs sm:text-sm font-mono w-full"
             />
           )}
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] text-muted-foreground">{hint}</p>
+          <div className="flex flex-wrap items-center justify-between gap-1 pt-0.5">
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground leading-tight">{hint}</p>
             {hasValue && (
-              <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={() => onChange("")}>
+              <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10 px-2 ml-auto" onClick={() => onChange("")}>
                 <X className="h-3 w-3 mr-1" /> Hapus
               </Button>
             )}
@@ -204,16 +366,35 @@ function ToggleRow({ label, desc, checked, onToggle }: {
 export default function AdminPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   const [, navigate] = useLocation();
 
-  const [active, setActive] = useState<Section>("overview");
+  const [active, setActive] = useState<Section>(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search).get("tab") as Section;
+      if (p && ["overview", "general", "web", "domains", "users", "stats"].includes(p)) return p;
+    }
+    return "overview";
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [detailedStats, setDetailedStats] = useState<DetailedStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [userPage, setUserPage] = useState(1);
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState("user");
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const USERS_PER_PAGE = 10;
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [editSettings, setEditSettings] = useState<Partial<SiteSettings>>({});
   const [newDomain, setNewDomain] = useState("");
   const [dnsTarget, setDnsTarget] = useState("");
@@ -238,16 +419,27 @@ export default function AdminPage() {
 
   const fetchAll = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const [s, u, cfg, ds] = await Promise.all([
+      // Timeout agar tidak macet di skeleton selamanya saat jaringan menggantung
+      const withTimeout = <T,>(p: Promise<T>) =>
+        Promise.race([
+          p,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Permintaan habis waktu (25 detik). Periksa koneksi lalu coba lagi.")), 25000)
+          ),
+        ]);
+      const [s, u, cfg, ds] = await withTimeout(Promise.all([
         adminApi("/api/admin/stats"),
         adminApi("/api/admin/users"),
         adminApi("/api/admin/settings"),
         adminApi("/api/admin/stats/detail"),
-      ]);
+      ]));
       setStats(s); setUsers(u); setSettings(cfg); setEditSettings(cfg); setDetailedStats(ds);
     } catch (err: unknown) {
-      toast({ title: "Gagal memuat data", description: err instanceof Error ? err.message : "", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Gagal memuat data";
+      setLoadError(msg);
+      toast({ title: "Gagal memuat data", description: msg, variant: "destructive" });
     } finally { setLoading(false); }
   };
 
@@ -277,7 +469,8 @@ export default function AdminPage() {
       await adminApi("/api/admin/settings", { method: "PUT", body: JSON.stringify(payload) });
       setSettings((prev) => ({ ...prev, ...payload } as SiteSettings));
       if (!partial) setSettings(payload as SiteSettings);
-      toast({ title: "Pengaturan disimpan" });
+      setLastSavedAt(Date.now());
+      toast({ title: "Pengaturan web berhasil disimpan", description: "Perubahan sudah aktif di situs." });
     } catch (err: unknown) {
       toast({ title: "Gagal menyimpan", description: err instanceof Error ? err.message : "", variant: "destructive" });
     } finally { setSaving(false); }
@@ -296,11 +489,31 @@ export default function AdminPage() {
     if (!d || !d.includes(".")) { toast({ title: "Domain tidak valid", variant: "destructive" }); return; }
     const cur = getDomains();
     if (cur.includes(d)) { toast({ title: "Domain sudah ada", variant: "destructive" }); return; }
-    set("available_domains", JSON.stringify([...cur, d]));
+    const updated = [...cur, d];
+    set("available_domains", JSON.stringify(updated));
     setNewDomain("");
+    // Langsung simpan ke backend via PATCH & PUT
+    adminApi("/api/admin/settings/available_domains", {
+      method: "PATCH",
+      body: JSON.stringify({ value: JSON.stringify(updated) }),
+    }).then(() => {
+      toast({ title: "Domain ditambahkan & disimpan!" });
+    }).catch(() => {
+      saveSettings({ ...editSettings, available_domains: JSON.stringify(updated) });
+    });
   };
   const removeDomain = (d: string) => {
-    set("available_domains", JSON.stringify(getDomains().filter((x) => x !== d)));
+    const updated = getDomains().filter((x) => x !== d);
+    set("available_domains", JSON.stringify(updated));
+    // Langsung simpan ke backend via PATCH & PUT
+    adminApi("/api/admin/settings/available_domains", {
+      method: "PATCH",
+      body: JSON.stringify({ value: JSON.stringify(updated) }),
+    }).then(() => {
+      toast({ title: "Domain dihapus & disimpan!" });
+    }).catch(() => {
+      saveSettings({ ...editSettings, available_domains: JSON.stringify(updated) });
+    });
   };
 
   const loadInboundSecret = async () => {
@@ -324,12 +537,20 @@ export default function AdminPage() {
     if (!d || !d.includes(".")) { toast({ title: "Masukkan domain yang valid", variant: "destructive" }); return; }
     setDnsChecking(true);
     setDnsResult(null);
+    // Timeout 25 detik: server membatasi tiap lookup 8 dtk, jadi hasil normal
+    // selalu kembali jauh sebelum ini; abort hanya untuk kasus macet.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
     try {
-      const data = await adminApi(`/api/admin/dns-check?domain=${encodeURIComponent(d)}`);
+      const data = await adminApi(`/api/admin/dns-check?domain=${encodeURIComponent(d)}`, { signal: ctrl.signal });
       setDnsResult(data);
     } catch (err: unknown) {
-      toast({ title: "Gagal cek DNS", description: err instanceof Error ? err.message : "", variant: "destructive" });
+      const desc = err instanceof DOMException && err.name === "AbortError"
+        ? "Pengecekan melebihi 25 detik tanpa respons. Coba lagi."
+        : (err instanceof Error ? err.message : "");
+      toast({ title: "Gagal cek DNS", description: desc, variant: "destructive" });
     } finally {
+      clearTimeout(timer);
       setDnsChecking(false);
     }
   };
@@ -348,16 +569,52 @@ export default function AdminPage() {
       toast({ title: "Pengguna dihapus" });
     } catch (err: unknown) { toast({ title: "Gagal", description: err instanceof Error ? err.message : "", variant: "destructive" }); }
   };
+  const handleAddUser = async () => {
+    if (!newUserEmail.includes("@")) { toast({ title: "Email tidak valid", variant: "destructive" }); return; }
+    if (newUserPassword.length < 8) { toast({ title: "Password minimal 8 karakter", variant: "destructive" }); return; }
+    setAddUserLoading(true);
+    try {
+      const data = await adminApi("/api/admin/users", { method: "POST", body: JSON.stringify({ email: newUserEmail, password: newUserPassword, role: newUserRole }) });
+      setUsers((p) => [data.user, ...p]);
+      setAddUserOpen(false);
+      setNewUserEmail(""); setNewUserPassword(""); setNewUserRole("user");
+      setUserSearch(""); setRoleFilter("all"); setUserPage(1);
+      toast({ title: "Pengguna berhasil dibuat" });
+    } catch (err: unknown) { toast({ title: "Gagal", description: err instanceof Error ? err.message : "", variant: "destructive" }); }
+    finally { setAddUserLoading(false); }
+  };
+  const handleSuspendUser = async (id: number, suspended: boolean) => {
+    try {
+      await adminApi(`/api/admin/users/${id}/suspend`, { method: "PATCH", body: JSON.stringify({ suspended }) });
+      setUsers((p) => p.map((u) => u.id === id ? { ...u, suspended } : u));
+      toast({ title: suspended ? "Pengguna dinonaktifkan" : "Pengguna diaktifkan kembali" });
+    } catch (err: unknown) { toast({ title: "Gagal", description: err instanceof Error ? err.message : "", variant: "destructive" }); }
+  };
+  const filteredUsers = users.filter((u) =>
+    (roleFilter === "all" || u.role === roleFilter) &&
+    u.email.toLowerCase().includes(userSearch.toLowerCase().trim())
+  );
+  const userTotalPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const safeUserPage = Math.min(userPage, userTotalPages);
+  const pagedUsers = filteredUsers.slice((safeUserPage - 1) * USERS_PER_PAGE, safeUserPage * USERS_PER_PAGE);
 
   if (!user || user.role !== "admin") return null;
 
-  const navTo = (s: Section) => { setActive(s); setSidebarOpen(false); };
+  const navTo = (s: Section) => {
+    setActive(s);
+    setSidebarOpen(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", s);
+      window.history.replaceState({}, "", url.toString());
+    }
+  };
 
   const Sidebar = () => (
     <aside className="flex flex-col h-full bg-card border-r border-border">
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-4 py-4 border-b border-border">
-        <div className="bg-primary/10 p-1.5 rounded-md text-primary shrink-0">
+        <div className="bg-gradient-to-br from-primary to-primary/70 p-1.5 rounded-xl text-primary-foreground shadow-sm shrink-0">
           <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
@@ -372,10 +629,10 @@ export default function AdminPage() {
           <button
             key={n.id}
             onClick={() => navTo(n.id)}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
               active === n.id
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-gradient-to-r from-primary to-primary/85 text-primary-foreground shadow-[0_2px_10px_-2px_hsl(var(--primary)/0.5)]"
+                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
             }`}
           >
             <n.icon className="h-4 w-4 shrink-0" />
@@ -417,7 +674,7 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background flex overflow-x-hidden">
+    <div className="min-h-screen bg-background flex w-full max-w-full overflow-x-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden md:flex md:w-56 lg:w-60 shrink-0 flex-col fixed inset-y-0 left-0 z-40">
         <Sidebar />
@@ -427,17 +684,17 @@ export default function AdminPage() {
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
-          <div className="absolute left-0 top-0 bottom-0 w-60 z-10">
+          <div className="absolute left-0 top-0 bottom-0 w-64 max-w-[80vw] z-10">
             <Sidebar />
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col md:ml-56 lg:ml-60">
+      <div className="flex-1 flex flex-col md:ml-56 lg:ml-60 min-w-0 w-full max-w-full overflow-x-hidden">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border h-14 flex items-center px-4 gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setSidebarOpen(true)}>
+        <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border h-14 flex items-center px-4 gap-3 w-full">
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden shrink-0" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-1 text-sm text-muted-foreground flex-1 min-w-0">
@@ -445,38 +702,32 @@ export default function AdminPage() {
             <ChevronRight className="h-3 w-3 hidden sm:inline" />
             <span className="font-medium text-foreground truncate">{NAV.find((n) => n.id === active)?.label}</span>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchAll}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={fetchAll} title="Muat ulang data">
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6 max-w-4xl mx-auto w-full space-y-6 pb-12 overflow-x-hidden">
+        <main className="flex-1 p-3.5 sm:p-5 md:p-6 max-w-4xl mx-auto w-full space-y-5 sm:space-y-6 pb-12 box-border min-w-0">
 
           {/* ── OVERVIEW ── */}
           {active === "overview" && (
             <>
-              <div>
-                <h1 className="text-xl font-bold">Ringkasan</h1>
-                <p className="text-sm text-muted-foreground mt-1">Gambaran umum kondisi sistem TempMail.</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                {[
-                  { icon: Users, label: "Pengguna", value: stats?.totalUsers ?? 0, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/30" },
-                  { icon: Mail, label: "Email Dibuat", value: stats?.totalEmails ?? 0, color: "text-primary", bg: "bg-primary/10" },
-                  { icon: Inbox, label: "Pesan Masuk", value: stats?.totalMessages ?? 0, color: "text-green-600", bg: "bg-green-50 dark:bg-green-950/30" },
-                ].map((s) => (
-                  <Card key={s.label} className="border-border/50">
-                    <CardContent className="p-3 sm:p-4">
-                      <div className={`${s.bg} w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center mb-2 sm:mb-3`}>
-                        <s.icon className={`h-4 w-4 sm:h-5 sm:w-5 ${s.color}`} />
-                      </div>
-                      {loading ? <Skeleton className="h-6 w-10 mb-1 sm:h-8 sm:w-16" /> : (
-                        <div className={`text-lg sm:text-2xl font-bold ${s.color}`}>{s.value}</div>
-                      )}
-                      <div className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{s.label}</div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <PageHeader eyebrow="Panel Admin" title="Ringkasan" desc="Gambaran umum kondisi sistem TempMail." />
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
+                <StatTile icon={Users} label="Pengguna" value={stats?.totalUsers ?? 0} tone="violet" loading={loading} foot={`+${detailedStats?.newUsersThisWeek ?? 0} dalam 7 hari`} />
+                <StatTile icon={Mail} label="Email Dibuat" value={stats?.totalEmails ?? 0} tone="primary" loading={loading} foot={`+${detailedStats?.emailsThisWeek ?? 0} dalam 7 hari`} />
+                <StatTile icon={Inbox} label="Pesan Masuk" value={stats?.totalMessages ?? 0} tone="emerald" loading={loading} foot={`+${detailedStats?.messagesThisWeek ?? 0} dalam 7 hari`} />
               </div>
 
               {/* Quick links */}
@@ -485,15 +736,16 @@ export default function AdminPage() {
                   <button
                     key={n.id}
                     onClick={() => navTo(n.id)}
-                    className="flex items-center gap-3 p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors text-left group"
+                    className="group flex items-center gap-3.5 p-4 rounded-2xl bg-card ring-1 ring-inset ring-border/60 hover:ring-primary/30 hover:shadow-[0_10px_28px_-14px_hsl(var(--primary)/0.4)] hover:-translate-y-0.5 transition-all text-left"
                   >
-                    <div className="bg-muted w-9 h-9 rounded-lg flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                      <n.icon className="h-4.5 w-4.5 text-muted-foreground group-hover:text-primary" />
+                    <div className="bg-gradient-to-br from-primary/[0.14] to-primary/[0.04] w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ring-inset ring-primary/10 group-hover:from-primary group-hover:to-primary/80 transition-all">
+                      <n.icon className="h-[18px] w-[18px] text-primary group-hover:text-primary-foreground transition-colors" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">{n.label}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{n.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{QUICK_DESC[n.id]}</p>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-50 group-hover:opacity-100" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:text-primary transition-all shrink-0" />
                   </button>
                 ))}
               </div>
@@ -503,12 +755,9 @@ export default function AdminPage() {
           {/* ── PENGATURAN UMUM ── */}
           {active === "general" && (
             <>
-              <div>
-                <h1 className="text-xl font-bold">Pengaturan Umum</h1>
-                <p className="text-sm text-muted-foreground mt-1">Konfigurasi dasar sistem email sementara.</p>
-              </div>
+              <PageHeader eyebrow="Konfigurasi" title="Pengaturan Umum" desc="Konfigurasi dasar sistem email sementara." />
 
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Settings className="h-4 w-4" /> Batas & Durasi</CardTitle>
                   <CardDescription>Atur batas penggunaan dan masa aktif email.</CardDescription>
@@ -545,7 +794,7 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4" /> Kontrol Akses</CardTitle>
                   <CardDescription>Atur siapa yang bisa menggunakan layanan.</CardDescription>
@@ -576,6 +825,60 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
 
+              {/* Integrasi Notifikasi Telegram */}
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Send className="h-4 w-4 text-[#229ED9]" />
+                    Integrasi Bot Telegram
+                  </CardTitle>
+                  <CardDescription>
+                    Otomatis teruskan pesan email & OTP yang masuk ke Chat / Channel Telegram kamu.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loading ? <Skeleton className="h-28 w-full" /> : (
+                    <>
+                      <ToggleRow
+                        label="Aktifkan Notifikasi Telegram"
+                        desc="Kirim notifikasi pesan baru & OTP ke Telegram saat ada email masuk."
+                        checked={editSettings.telegram_forward_enabled === "true"}
+                        onToggle={() => toggle("telegram_forward_enabled")}
+                      />
+                      <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                        <div className="space-y-1.5">
+                          <Label>Username Bot Telegram (@)</Label>
+                          <Input
+                            placeholder="Contoh: NamaBotKamu_bot"
+                            value={editSettings.telegram_bot_username ?? ""}
+                            onChange={(e) => set("telegram_bot_username", e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">Tautan tombol "Hubungkan" di web akan mengarah ke bot ini.</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Telegram Chat ID / User ID</Label>
+                          <Input
+                            placeholder="Contoh: 5606826328 atau @channel_kamu"
+                            value={editSettings.telegram_chat_id ?? ""}
+                            onChange={(e) => set("telegram_chat_id", e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">ID akun/grup tujuan (cek via @userinfobot).</p>
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <Label>Telegram Bot Token</Label>
+                          <Input
+                            placeholder="Contoh: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                            value={editSettings.telegram_bot_token ?? ""}
+                            onChange={(e) => set("telegram_bot_token", e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">Didapat dari @BotFather di Telegram.</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
               <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
                 <Save className="h-4 w-4" />
                 {saving ? "Menyimpan..." : "Simpan Pengaturan Umum"}
@@ -586,13 +889,26 @@ export default function AdminPage() {
           {/* ── PENGATURAN WEB ── */}
           {active === "web" && (
             <>
-              <div>
-                <h1 className="text-xl font-bold">Pengaturan Web</h1>
-                <p className="text-sm text-muted-foreground mt-1">Konfigurasi tampilan, branding, SEO, dan fitur antarmuka.</p>
-              </div>
+              <PageHeader eyebrow="Konfigurasi" title="Pengaturan Web" desc="Konfigurasi tampilan, branding, SEO, dan fitur antarmuka." />
+
+              {loadError && !loading ? (
+                <Card className="border-destructive/40 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+                    <AlertTriangle className="h-8 w-8 text-destructive" />
+                    <div>
+                      <p className="font-semibold">Gagal memuat pengaturan</p>
+                      <p className="text-sm text-muted-foreground mt-1">{loadError}</p>
+                    </div>
+                    <Button onClick={fetchAll} className="gap-2">
+                      <RefreshCw className="h-4 w-4" /> Coba Lagi
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+              <>
 
               {/* Branding */}
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Image className="h-4 w-4" /> Branding & Identitas</CardTitle>
                   <CardDescription>Nama, logo header, dan favicon (ikon tab browser) situs.</CardDescription>
@@ -637,7 +953,7 @@ export default function AdminPage() {
                       </div>
                       <div className="space-y-1.5">
                         <Label>Teks Footer</Label>
-                        <Input value={editSettings.footer_text ?? ""} onChange={(e) => set("footer_text", e.target.value)} placeholder="© 2025 TempMail..." />
+                        <Input value={editSettings.footer_text ?? ""} onChange={(e) => set("footer_text", e.target.value)} placeholder={`© ${new Date().getFullYear()} TempMail...`} />
                       </div>
                     </>
                   )}
@@ -645,7 +961,7 @@ export default function AdminPage() {
               </Card>
 
               {/* SEO */}
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Search className="h-4 w-4" /> SEO & Meta</CardTitle>
                   <CardDescription>Konfigurasi tag meta untuk mesin pencari.</CardDescription>
@@ -669,7 +985,7 @@ export default function AdminPage() {
               </Card>
 
               {/* Fitur UI */}
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4" /> Fitur Antarmuka</CardTitle>
                   <CardDescription>Toggle fitur-fitur di halaman utama.</CardDescription>
@@ -695,7 +1011,7 @@ export default function AdminPage() {
               </Card>
 
               {/* Pengumuman */}
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-4 w-4" /> Banner Pengumuman</CardTitle>
                   <CardDescription>Tampilkan banner info/peringatan di bagian atas halaman.</CardDescription>
@@ -767,10 +1083,20 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
 
-              <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
-                <Save className="h-4 w-4" />
-                {saving ? "Menyimpan..." : "Simpan Pengaturan Web"}
-              </Button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button onClick={() => saveSettings()} disabled={saving} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  {saving ? "Menyimpan..." : "Simpan Pengaturan Web"}
+                </Button>
+                {lastSavedAt && (
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                    Tersimpan {new Date(lastSavedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                )}
+              </div>
+              </>
+              )}
             </>
           )}
 
@@ -778,18 +1104,17 @@ export default function AdminPage() {
           {active === "domains" && (
             <>
               {/* ── Header ── */}
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <h1 className="text-xl font-bold">Manajemen Domain</h1>
-                  <p className="text-sm text-muted-foreground mt-1">Tambah domain dan hubungkan ke Cloudflare Email Routing.</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+              <PageHeader
+                eyebrow="Infrastruktur"
+                title="Manajemen Domain"
+                desc="Tambah domain dan hubungkan ke Cloudflare Email Routing."
+                right={
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-green-500/15 to-emerald-500/10 ring-1 ring-inset ring-green-500/25">
                     <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs font-medium text-green-600 dark:text-green-400">{getDomains().length} Domain Aktif</span>
+                    <span className="text-xs font-semibold text-green-700 dark:text-green-300">{getDomains().length} Domain Aktif</span>
                   </div>
-                </div>
-              </div>
+                }
+              />
 
               {/* ── Layout 2 kolom ── */}
               <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
@@ -798,7 +1123,7 @@ export default function AdminPage() {
                 <div className="xl:col-span-2 space-y-5">
 
                   {/* Daftar Domain */}
-                  <Card className="overflow-hidden">
+                  <Card className="overflow-hidden rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     <CardHeader className="pb-3 border-b border-border bg-muted/30">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
                         <Globe className="h-4 w-4 text-primary" />
@@ -822,8 +1147,8 @@ export default function AdminPage() {
                             </div>
                             {/* Domain Info */}
                             <div className="flex-1 min-w-0">
-                              <p className="font-mono text-sm font-bold truncate">@{d}</p>
-                              <p className="text-[11px] text-muted-foreground truncate">contoh@{d}</p>
+                              <p className="font-mono text-sm font-bold break-all" title={`@${d}`}>@{d}</p>
+                              <p className="text-[11px] text-muted-foreground break-all" title={`contoh@${d}`}>contoh@{d}</p>
                             </div>
                             {/* Actions — selalu tampil di mobile, hover di desktop */}
                             <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -874,12 +1199,15 @@ export default function AdminPage() {
                           <Save className="h-3.5 w-3.5" />
                           {saving ? "Menyimpan..." : "Simpan Perubahan"}
                         </Button>
+                        <p className="text-[11px] text-muted-foreground text-center leading-snug">
+                          Menyimpan seluruh pengaturan (semua tab), termasuk daftar domain di atas.
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
 
                   {/* Tes DNS */}
-                  <Card>
+                  <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     <CardHeader className="pb-3 border-b border-border bg-muted/30">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
                         <Search className="h-4 w-4 text-primary" />
@@ -927,7 +1255,12 @@ export default function AdminPage() {
                                 <div className="flex gap-2 text-[11px]">
                                   <span className="text-muted-foreground w-8 shrink-0 font-medium">MX</span>
                                   <div className="flex flex-wrap gap-1">
-                                    {dnsResult.mx.map(m => <code key={m.exchange} className="bg-muted px-1.5 py-0.5 rounded font-mono">{m.priority} {m.exchange}</code>)}
+                                    {dnsResult.mx.map(m => (
+                                      <span key={m.exchange} className="inline-flex items-center gap-1.5 bg-muted px-1.5 py-0.5 rounded">
+                                        <span className="text-[10px] font-bold bg-primary/15 text-primary px-1 rounded" title="Prioritas MX">{m.priority}</span>
+                                        <code className="font-mono">{m.exchange}</code>
+                                      </span>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -984,7 +1317,7 @@ export default function AdminPage() {
                   </div>
 
                   {/* Langkah-langkah */}
-                  <Card>
+                  <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     <CardHeader className="pb-3 border-b border-border bg-muted/30">
                       <CardTitle className="text-sm font-semibold">Langkah-langkah Setup</CardTitle>
                       <CardDescription className="text-xs">Ikuti urutan ini untuk mengaktifkan penerimaan email real-time.</CardDescription>
@@ -1151,7 +1484,7 @@ export default function AdminPage() {
                   </Card>
 
                   {/* Webhook Endpoint Info */}
-                  <Card>
+                  <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                     <CardHeader className="pb-3 border-b border-border bg-muted/30">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
                         <Zap className="h-4 w-4 text-primary" />
@@ -1190,23 +1523,48 @@ export default function AdminPage() {
           {/* ── PENGGUNA ── */}
           {active === "users" && (
             <>
-              <div>
-                <h1 className="text-xl font-bold">Manajemen Pengguna</h1>
-                <p className="text-sm text-muted-foreground mt-1">{users.length} pengguna terdaftar di sistem.</p>
+              <PageHeader eyebrow="Akses" title="Manajemen Pengguna" desc={`${users.length} pengguna terdaftar di sistem.`} />
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[160px]">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Cari email..."
+                    value={userSearch}
+                    onChange={(e) => { setUserSearch(e.target.value); setUserPage(1); }}
+                    className="pl-8"
+                  />
+                </div>
+                <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v as "all" | "admin" | "user"); setUserPage(1); }}>
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="Semua" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="user">User</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={() => setAddUserOpen(true)} className="gap-1.5">
+                  <Plus className="h-4 w-4" /><span className="hidden sm:inline">Tambah</span>
+                </Button>
               </div>
 
-              <Card>
+              <Card className="rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <CardContent className="p-0">
                   {loading ? (
                     <div className="p-4 space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
                   ) : users.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground text-sm">Belum ada pengguna.</div>
+                  ) : filteredUsers.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground text-sm">Tidak ada pengguna yang cocok.</div>
                   ) : (
                     <div className="divide-y divide-border">
-                      {users.map((u) => (
-                        <div key={u.id} className="flex items-center justify-between p-4 hover:bg-muted/20 transition-colors">
+                      {pagedUsers.map((u) => (
+                        <div key={u.id} className={`flex items-center justify-between p-4 hover:bg-muted/20 transition-colors${u.suspended ? " opacity-55" : ""}`}>
+
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-bold">
+                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/25 to-primary/5 text-primary flex items-center justify-center shrink-0 text-sm font-extrabold ring-1 ring-inset ring-primary/15">
                               {u.email[0].toUpperCase()}
                             </div>
                             <div className="min-w-0">
@@ -1216,49 +1574,38 @@ export default function AdminPage() {
                                   {u.role === "admin" ? "Admin" : "User"}
                                 </Badge>
                                 {u.id === user.id && <Badge variant="outline" className="text-[10px] h-4 px-1.5 shrink-0">Anda</Badge>}
+                                {u.suspended && <Badge variant="destructive" className="text-[10px] h-4 px-1.5 shrink-0">Nonaktif</Badge>}
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">Bergabung {format(new Date(u.createdAt), "d MMM yyyy, HH:mm")}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Bergabung {formatWib(u.createdAt)} &bull; {u.emailCount} email &bull; {u.messageCount} pesan</p>
                             </div>
                           </div>
                           {u.id !== user.id && (
-                            <div className="flex items-center gap-1 shrink-0 ml-2">
-                              <Button
-                                variant="outline" size="sm" className="h-7 text-xs gap-1"
-                                onClick={() => handleRoleChange(u.id, u.role === "admin" ? "user" : "admin")}
-                              >
-                                {u.role === "admin"
-                                  ? <><ShieldX className="h-3 w-3" /><span className="hidden sm:inline">Turunkan</span></>
-                                  : <><ShieldCheck className="h-3 w-3" /><span className="hidden sm:inline">Admin</span></>}
-                              </Button>
-                              <Button
-                                variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                title="Reset password"
-                                onClick={() => { setResetPasswordUserId(u.id); setResetPasswordValue(""); }}
-                              >
-                                <KeyRound className="h-3.5 w-3.5" />
-                              </Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Hapus pengguna?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Akun <strong>{u.email}</strong> akan dihapus permanen beserta semua datanya. Tidak bisa dibatalkan.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Batal</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDeleteUser(u.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                      Hapus Permanen
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0 ml-2" title="Aksi">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52">
+                                <DropdownMenuItem onClick={() => handleRoleChange(u.id, u.role === "admin" ? "user" : "admin")}>
+                                  {u.role === "admin" ? <ShieldX className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                                  <span>{u.role === "admin" ? "Turunkan ke User" : "Jadikan Admin"}</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => { setResetPasswordUserId(u.id); setResetPasswordValue(""); }}>
+                                  <KeyRound className="h-4 w-4" />
+                                  <span>Reset Password</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleSuspendUser(u.id, !u.suspended)}>
+                                  {u.suspended ? <CheckCircle className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                                  <span>{u.suspended ? "Aktifkan Kembali" : "Nonaktifkan"}</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setDeleteUserId(u.id)} className="text-destructive focus:text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                  <span>Hapus</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </div>
                       ))}
@@ -1266,72 +1613,127 @@ export default function AdminPage() {
                   )}
                 </CardContent>
               </Card>
+
+              {userTotalPages > 1 && (
+                <div className="flex items-center justify-center gap-1.5">
+                  {Array.from({ length: userTotalPages }, (_, i) => i + 1).map((p) => (
+                    <Button
+                      key={p}
+                      variant={p === safeUserPage ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setUserPage(p)}
+                    >
+                      {p}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {/* Dialog hapus pengguna */}
+              <AlertDialog open={deleteUserId !== null} onOpenChange={(o) => { if (!o) setDeleteUserId(null); }}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Hapus pengguna?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Akun <strong>{users.find((x) => x.id === deleteUserId)?.email}</strong> akan dihapus permanen beserta semua datanya. Tidak bisa dibatalkan.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => { if (deleteUserId !== null) handleDeleteUser(deleteUserId); setDeleteUserId(null); }}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Hapus Permanen
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              {/* Dialog tambah pengguna */}
+              <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <PlusCircle className="h-5 w-5 text-primary" /> Tambah Pengguna
+                    </DialogTitle>
+                    <DialogDescription>Buat akun baru langsung dari panel admin.</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 py-1">
+                    <div className="space-y-1.5">
+                      <Label>Email</Label>
+                      <Input type="email" placeholder="nama@email.com" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Password</Label>
+                      <Input type="password" placeholder="Minimal 8 karakter" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Role</Label>
+                      <Select value={newUserRole} onValueChange={setNewUserRole}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter className="gap-2">
+                    <Button variant="outline" onClick={() => setAddUserOpen(false)}>Batal</Button>
+                    <Button onClick={handleAddUser} disabled={addUserLoading}>{addUserLoading ? "Menyimpan..." : "Tambah Pengguna"}</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </>
           )}
 
           {/* ── STATISTIK ── */}
           {active === "stats" && (
             <>
-              <div>
-                <h1 className="text-xl font-bold">Statistik</h1>
-                <p className="text-sm text-muted-foreground mt-1">Data penggunaan sistem secara keseluruhan.</p>
-              </div>
+              <PageHeader eyebrow="Analitik" title="Statistik" desc="Data penggunaan sistem secara keseluruhan." />
 
-              {/* Stat Cards — 3 total + 3 hari ini */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {[
-                  { label: "Total Pengguna", value: stats?.totalUsers ?? 0, icon: Users, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/40" },
-                  { label: "Total Email Dibuat", value: stats?.totalEmails ?? 0, icon: Mail, color: "text-primary", bg: "bg-primary/10" },
-                  { label: "Total Pesan Masuk", value: stats?.totalMessages ?? 0, icon: Inbox, color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-950/40" },
-                ].map((s) => (
-                  <Card key={s.label} className="border-border/50">
-                    <CardContent className="p-4">
-                      <div className={`${s.bg} w-8 h-8 rounded-lg flex items-center justify-center mb-3`}>
-                        <s.icon className={`h-4 w-4 ${s.color}`} />
-                      </div>
-                      {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
-                        <div className={`text-2xl font-bold ${s.color}`}>{s.value.toLocaleString("id-ID")}</div>
-                      )}
-                      <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {/* Total — flat */}
+              <section>
+                <StatSectionTitle>Total Keseluruhan</StatSectionTitle>
+                <div className="divide-y divide-border/60">
+                  <StatRow icon={Users} label="Total Pengguna" value={stats?.totalUsers ?? 0} tone="violet" loading={loading} foot={`+${detailedStats?.newUsersThisWeek ?? 0} dalam 7 hari`} />
+                  <StatRow icon={Mail} label="Total Email Dibuat" value={stats?.totalEmails ?? 0} tone="primary" loading={loading} foot={`+${detailedStats?.emailsThisWeek ?? 0} dalam 7 hari`} />
+                  <StatRow icon={Inbox} label="Total Pesan Masuk" value={stats?.totalMessages ?? 0} tone="emerald" loading={loading} foot={`+${detailedStats?.messagesThisWeek ?? 0} dalam 7 hari`} />
+                </div>
+              </section>
 
-              {/* Stat Hari Ini */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: "Email Aktif Sekarang", value: detailedStats?.activeEmails ?? 0, icon: Activity, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-50 dark:bg-cyan-950/40" },
-                  { label: "Email Dibuat Hari Ini", value: detailedStats?.emailsToday ?? 0, icon: Mail, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/40" },
-                  { label: "Pesan Diterima Hari Ini", value: detailedStats?.messagesToday ?? 0, icon: Inbox, color: "text-primary", bg: "bg-primary/10" },
-                  { label: "User Baru (7 Hari)", value: detailedStats?.newUsersThisWeek ?? 0, icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
-                ].map((s) => (
-                  <Card key={s.label} className="border-border/50">
-                    <CardContent className="p-3">
-                      <div className={`${s.bg} w-7 h-7 rounded-md flex items-center justify-center mb-2`}>
-                        <s.icon className={`h-3.5 w-3.5 ${s.color}`} />
-                      </div>
-                      {loading ? <Skeleton className="h-7 w-12 mb-1" /> : (
-                        <div className={`text-xl font-bold ${s.color}`}>{s.value.toLocaleString("id-ID")}</div>
-                      )}
-                      <div className="text-[11px] text-muted-foreground leading-tight mt-0.5">{s.label}</div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {/* Aktivitas — flat */}
+              <section>
+                <StatSectionTitle>Aktivitas</StatSectionTitle>
+                <div className="divide-y divide-border/60">
+                  <StatRow icon={Activity} label="Email Aktif Sekarang" value={detailedStats?.activeEmails ?? 0} tone="cyan" loading={loading} />
+                  <StatRow icon={Mail} label="Email Dibuat Hari Ini" value={detailedStats?.emailsToday ?? 0} tone="orange" loading={loading}
+                    trend={{ pct: pctChange(detailedStats?.emailsToday ?? 0, detailedStats?.emailsYesterday ?? 0), label: "vs kemarin" }} />
+                  <StatRow icon={Inbox} label="Pesan Diterima Hari Ini" value={detailedStats?.messagesToday ?? 0} tone="primary" loading={loading}
+                    trend={{ pct: pctChange(detailedStats?.messagesToday ?? 0, detailedStats?.messagesYesterday ?? 0), label: "vs kemarin" }} />
+                  <StatRow icon={TrendingUp} label="User Baru (7 Hari)" value={detailedStats?.newUsersThisWeek ?? 0} tone="emerald" loading={loading}
+                    trend={{ pct: pctChange(detailedStats?.newUsersThisWeek ?? 0, detailedStats?.newUsersPrevWeek ?? 0), label: "vs 7 hari lalu" }} />
+                </div>
+              </section>
 
               {/* Grafik Email per Hari */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <BarChart2 className="h-4 w-4" /> Email Dibuat per Hari (7 Hari Terakhir)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-1 text-foreground">
+                  <BarChart2 className="h-4 w-4 text-primary" /> Email Dibuat per Hari (7 Hari Terakhir)
+                </h3>
+                <div className="divide-y divide-border/60">
                   {loading ? <Skeleton className="h-48 w-full" /> : (
                     <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={detailedStats?.emailsPerDay ?? []} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                        <defs>
+                          <linearGradient id="adminGradEmail" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={1} />
+                            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 6" vertical={false} className="stroke-border/50" />
                         <XAxis
                           dataKey="date"
                           tick={{ fontSize: 11 }}
@@ -1347,25 +1749,29 @@ export default function AdminPage() {
                           labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
                           contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                         />
-                        <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="count" fill="url(#adminGradEmail)" radius={[6, 6, 2, 2]} />
                       </BarChart>
                     </ResponsiveContainer>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Grafik Pesan per Hari */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Inbox className="h-4 w-4" /> Pesan Masuk per Hari (7 Hari Terakhir)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-1 text-foreground">
+                  <Inbox className="h-4 w-4 text-primary" /> Pesan Masuk per Hari (7 Hari Terakhir)
+                </h3>
+                <div className="divide-y divide-border/60">
                   {loading ? <Skeleton className="h-48 w-full" /> : (
                     <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={detailedStats?.messagesPerDay ?? []} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                        <defs>
+                          <linearGradient id="adminGradMsg" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#22c55e" stopOpacity={1} />
+                            <stop offset="100%" stopColor="#22c55e" stopOpacity={0.35} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 6" vertical={false} className="stroke-border/50" />
                         <XAxis
                           dataKey="date"
                           tick={{ fontSize: 11 }}
@@ -1380,55 +1786,28 @@ export default function AdminPage() {
                           labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
                           contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                         />
-                        <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="count" fill="url(#adminGradMsg)" radius={[6, 6, 2, 2]} />
                       </BarChart>
                     </ResponsiveContainer>
                   )}
-                </CardContent>
-              </Card>
-
-              {/* Metrik Turunan + Konfigurasi */}
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Card className="bg-muted/30">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="bg-orange-100 dark:bg-orange-950/50 p-1.5 rounded-lg">
-                        <BarChart2 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground font-medium">Rata-rata Pesan / Email</p>
-                    </div>
-                    {loading ? <Skeleton className="h-8 w-16" /> : (
-                      <p className="text-2xl font-bold">
-                        {stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0"}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-                <Card className="bg-muted/30">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="bg-cyan-100 dark:bg-cyan-950/50 p-1.5 rounded-lg">
-                        <Zap className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground font-medium">Rata-rata Email / User</p>
-                    </div>
-                    {loading ? <Skeleton className="h-8 w-16" /> : (
-                      <p className="text-2xl font-bold">
-                        {stats?.totalUsers ? (stats.totalEmails / stats.totalUsers).toFixed(1) : "0"}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
+                </div>
               </div>
 
+              {/* Metrik Turunan — flat */}
+              <section>
+                <StatSectionTitle>Rata-rata</StatSectionTitle>
+                <div className="divide-y divide-border/60">
+                  <StatRow icon={BarChart2} label="Rata-rata Pesan / Email" value={stats?.totalEmails ? (stats.totalMessages / stats.totalEmails).toFixed(1) : "0"} tone="orange" loading={loading} />
+                  <StatRow icon={Zap} label="Rata-rata Email / User" value={stats?.totalUsers ? (stats.totalEmails / stats.totalUsers).toFixed(1) : "0"} tone="cyan" loading={loading} />
+                </div>
+              </section>
+
               {/* Konfigurasi Sistem */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Info className="h-4 w-4" /> Konfigurasi Sistem
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-0 divide-y divide-border/50">
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-1 text-foreground">
+                  <Info className="h-4 w-4 text-primary" /> Konfigurasi Sistem
+                </h3>
+                <div className="divide-y divide-border/60">
                   <div className="flex items-center justify-between py-2.5 gap-3">
                     <span className="text-sm text-muted-foreground shrink-0">Status Sistem</span>
                     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${settings?.maintenance_mode === "true" ? "bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300" : "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300"}`}>
@@ -1463,8 +1842,8 @@ export default function AdminPage() {
                       ))}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </>
           )}
 

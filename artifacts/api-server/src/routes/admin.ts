@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable } from "@workspace/db";
-import { eq, count, desc, gte, gt, sql } from "drizzle-orm";
+import { eq, count, desc, gte, gt, sql, and, lt, isNotNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
 import { promisify } from "util";
@@ -32,16 +32,27 @@ router.get("/stats", async (_req, res) => {
 router.get("/stats/detail", async (_req, res) => {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
   const sevenDaysAgo = new Date(todayStart);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const prevWeekStart = new Date(todayStart);
+  prevWeekStart.setDate(prevWeekStart.getDate() - 13);
 
-  const [[activeCount], [emailsToday], [newUsers], [messagesT], emailsPerDayRaw, messagesPerDayRaw] = await Promise.all([
+  const [[activeCount], [emailsToday], [newUsers], [messagesT], emailsPerDayRaw, messagesPerDayRaw,
+    [emailsYesterday], [messagesYesterday], [newUsersPrev], [emailsWeek], [messagesWeek]] = await Promise.all([
     db.select({ count: count() }).from(emailAddressesTable).where(gt(emailAddressesTable.expiresAt, now)),
     db.select({ count: count() }).from(emailAddressesTable).where(gte(emailAddressesTable.createdAt, todayStart)),
     db.select({ count: count() }).from(usersTable).where(gte(usersTable.createdAt, sevenDaysAgo)),
     db.select({ count: count() }).from(messagesTable).where(gte(messagesTable.receivedAt, todayStart)),
     db.execute(sql`SELECT DATE(created_at) as date, COUNT(*)::int as count FROM email_addresses WHERE created_at >= ${sevenDaysAgo} GROUP BY DATE(created_at) ORDER BY date ASC`),
     db.execute(sql`SELECT DATE(received_at) as date, COUNT(*)::int as count FROM messages WHERE received_at >= ${sevenDaysAgo} GROUP BY DATE(received_at) ORDER BY date ASC`),
+    // Periode sebelumnya — untuk perbandingan
+    db.select({ count: count() }).from(emailAddressesTable).where(and(gte(emailAddressesTable.createdAt, yesterdayStart), lt(emailAddressesTable.createdAt, todayStart))),
+    db.select({ count: count() }).from(messagesTable).where(and(gte(messagesTable.receivedAt, yesterdayStart), lt(messagesTable.receivedAt, todayStart))),
+    db.select({ count: count() }).from(usersTable).where(and(gte(usersTable.createdAt, prevWeekStart), lt(usersTable.createdAt, sevenDaysAgo))),
+    db.select({ count: count() }).from(emailAddressesTable).where(gte(emailAddressesTable.createdAt, sevenDaysAgo)),
+    db.select({ count: count() }).from(messagesTable).where(gte(messagesTable.receivedAt, sevenDaysAgo)),
   ]);
 
   const emailsByDay: Record<string, number> = {};
@@ -49,7 +60,9 @@ router.get("/stats/detail", async (_req, res) => {
   for (let i = 0; i < 7; i++) {
     const d = new Date(sevenDaysAgo);
     d.setDate(d.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
+    // Key tanggal LOKAL server (bukan UTC): toISOString() menggeser ke hari
+    // sebelumnya untuk zona UTC+x sehingga grafik kehilangan hari berjalan.
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     emailsByDay[key] = 0;
     messagesByDay[key] = 0;
   }
@@ -72,6 +85,12 @@ router.get("/stats/detail", async (_req, res) => {
     messagesToday: Number(messagesT.count),
     emailsPerDay,
     messagesPerDay,
+    // Perbandingan periode
+    emailsYesterday: Number(emailsYesterday.count),
+    messagesYesterday: Number(messagesYesterday.count),
+    newUsersPrevWeek: Number(newUsersPrev.count),
+    emailsThisWeek: Number(emailsWeek.count),
+    messagesThisWeek: Number(messagesWeek.count),
   });
 });
 
@@ -81,7 +100,56 @@ router.get("/users", async (_req, res) => {
     .select()
     .from(usersTable)
     .orderBy(desc(usersTable.createdAt));
-  res.json(users.map((u) => ({ id: u.id, email: u.email, role: u.role, createdAt: u.createdAt })));
+  const emailCounts = await db
+    .select({ userId: emailAddressesTable.userId, count: count() })
+    .from(emailAddressesTable)
+    .where(isNotNull(emailAddressesTable.userId))
+    .groupBy(emailAddressesTable.userId);
+  const msgCounts = await db
+    .select({ userId: emailAddressesTable.userId, count: count() })
+    .from(messagesTable)
+    .innerJoin(emailAddressesTable, eq(messagesTable.email, emailAddressesTable.email))
+    .where(isNotNull(emailAddressesTable.userId))
+    .groupBy(emailAddressesTable.userId);
+  const eMap = new Map(emailCounts.map((r) => [r.userId, Number(r.count)]));
+  const mMap = new Map(msgCounts.map((r) => [r.userId, Number(r.count)]));
+  res.json(users.map((u) => ({
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    suspended: u.suspended ?? false,
+    createdAt: u.createdAt,
+    emailCount: eMap.get(u.id) ?? 0,
+    messageCount: mMap.get(u.id) ?? 0,
+  })));
+});
+
+router.post("/users", async (req, res) => {
+  const { email, password, role } = req.body ?? {};
+  const cleanEmail = String(email ?? "").toLowerCase().trim();
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    res.status(400).json({ error: "Bad request", message: "Email tidak valid." });
+    return;
+  }
+  if (!password || String(password).length < 8) {
+    res.status(400).json({ error: "Bad request", message: "Password minimal 8 karakter." });
+    return;
+  }
+  const cleanRole = role === "admin" ? "admin" : "user";
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  try {
+    const [u] = await db
+      .insert(usersTable)
+      .values({ email: cleanEmail, passwordHash, role: cleanRole })
+      .returning({ id: usersTable.id, email: usersTable.email, role: usersTable.role, createdAt: usersTable.createdAt });
+    res.status(201).json({ success: true, message: "Pengguna berhasil dibuat.", user: { ...u, suspended: false, emailCount: 0, messageCount: 0 } });
+  } catch (e: any) {
+    if (e?.code === "23505") {
+      res.status(409).json({ error: "Conflict", message: "Email sudah terdaftar." });
+      return;
+    }
+    throw e;
+  }
 });
 
 router.patch("/users/:id/role", async (req, res) => {
@@ -93,6 +161,26 @@ router.patch("/users/:id/role", async (req, res) => {
   }
   await db.update(usersTable).set({ role }).where(eq(usersTable.id, id));
   res.json({ success: true, message: `Role berhasil diubah ke ${role}.` });
+});
+
+router.patch("/users/:id/suspend", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { suspended } = req.body ?? {};
+  if (typeof suspended !== "boolean") {
+    res.status(400).json({ error: "Bad request", message: "Nilai suspended harus boolean." });
+    return;
+  }
+  const selfId = req.session.userId;
+  if (id === selfId) {
+    res.status(400).json({ error: "Bad request", message: "Tidak bisa menonaktifkan akun sendiri." });
+    return;
+  }
+  await db.update(usersTable).set({ suspended }).where(eq(usersTable.id, id));
+  if (suspended) {
+    // [SECURITY] Akhiri semua sesi aktif user yang dinonaktifkan
+    await db.execute(sql`DELETE FROM user_sessions WHERE (sess::jsonb ->> 'userId') = ${String(id)}`);
+  }
+  res.json({ success: true, message: suspended ? "Pengguna dinonaktifkan." : "Pengguna diaktifkan kembali." });
 });
 
 router.delete("/users/:id", async (req, res) => {
@@ -109,13 +197,15 @@ router.delete("/users/:id", async (req, res) => {
 router.patch("/users/:id/password", async (req, res) => {
   const id = parseInt(req.params.id);
   const { password } = req.body ?? {};
-  if (!password || password.length < 6) {
-    res.status(400).json({ error: "Bad request", message: "Password minimal 6 karakter." });
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "Bad request", message: "Password minimal 8 karakter." });
     return;
   }
   const passwordHash = await bcrypt.hash(password, 10);
   await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, id));
-  res.json({ success: true, message: "Password berhasil diubah." });
+  // [SECURITY] Invalidasi semua sesi aktif user agar password lama tidak bisa dipakai lagi
+  await db.execute(sql`DELETE FROM user_sessions WHERE (sess::jsonb ->> 'userId') = ${String(id)}`);
+  res.json({ success: true, message: "Password berhasil diubah. Semua sesi aktif user telah diakhiri." });
 });
 
 // --- Site Settings ---
@@ -146,11 +236,15 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   announcement_type: "info",
 };
 
+// Key yang tidak boleh dikembalikan plaintext ke client (meski admin)
+const SENSITIVE_SETTING_KEYS = new Set(["telegram_bot_token", "inbound_webhook_secret"]);
+const MASKED_SECRET = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+
 router.get("/settings", async (_req, res) => {
   const rows = await db.select().from(siteSettingsTable);
   const settings: Record<string, string> = { ...DEFAULT_SETTINGS };
   for (const row of rows) {
-    settings[row.key] = row.value;
+    settings[row.key] = SENSITIVE_SETTING_KEYS.has(row.key) && row.value ? MASKED_SECRET : row.value;
   }
   res.json(settings);
 });
@@ -162,6 +256,8 @@ router.put("/settings", async (req, res) => {
     return;
   }
   for (const [key, value] of Object.entries(updates)) {
+    // Jangan timpa secret asli bila client mengirim kembali nilai mask
+    if (SENSITIVE_SETTING_KEYS.has(key) && value === MASKED_SECRET) continue;
     await db
       .insert(siteSettingsTable)
       .values({ key, value, updatedAt: new Date() })
@@ -201,10 +297,18 @@ router.get("/dns-check", async (req, res) => {
     summary: string;
   } = { domain, a: [], cname: [], mx: [], status: "error", summary: "" };
 
+  // Tiap lookup dibatasi 8 detik agar request tidak menggantung selamanya
+  // bila resolver DNS tidak merespons (dulu: tanpa timeout sama sekali).
+  const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error("DNS lookup timeout")), ms)),
+    ]);
+
   await Promise.allSettled([
-    dnsResolve4(domain).then((r) => { result.a = r; }).catch(() => {}),
-    dnsResolveCname(domain).then((r) => { result.cname = r; }).catch(() => {}),
-    dnsResolveMx(domain).then((r) => { result.mx = r.map(m => ({ exchange: m.exchange, priority: m.priority })); }).catch(() => {}),
+    withTimeout(dnsResolve4(domain), 8000).then((r) => { result.a = r; }).catch(() => {}),
+    withTimeout(dnsResolveCname(domain), 8000).then((r) => { result.cname = r; }).catch(() => {}),
+    withTimeout(dnsResolveMx(domain), 8000).then((r) => { result.mx = r.map(m => ({ exchange: m.exchange, priority: m.priority })); }).catch(() => {}),
   ]);
 
   if (result.a.length > 0 || result.cname.length > 0) {
