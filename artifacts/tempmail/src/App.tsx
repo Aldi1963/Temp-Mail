@@ -21,6 +21,7 @@ import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import { ROUTER_BASE } from "./lib/api-base";
+import { Capacitor } from "@capacitor/core";
 
 // Error Boundary to catch any render errors and prevent white blank screens
 class ErrorBoundary extends React.Component<
@@ -115,6 +116,26 @@ function Router() {
 }
 
 function App() {
+  // Aplikasi Android: samakan warna ikon status bar dengan tema (system bar transparan).
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let obs: MutationObserver | null = null;
+    const sync = async () => {
+      try {
+        const { StatusBar, Style } = await import("@capacitor/status-bar");
+        const dark = document.documentElement.classList.contains("dark");
+        await StatusBar.setOverlaysWebView({ overlay: true });
+        await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
+      } catch {
+        /* plugin belum siap, abaikan */
+      }
+    };
+    sync();
+    obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs?.disconnect();
+  }, []);
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
