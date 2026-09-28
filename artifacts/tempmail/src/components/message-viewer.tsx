@@ -15,7 +15,7 @@ import {
   useAddToBlacklist,
   getGetInboxQueryKey,
   getGetEmailStatsQueryKey,
-} from "@workspace/api-client-react";
+} from "@aldi1963/temp-mail-api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { getManageToken } from "@/lib/manage-token";
 import {

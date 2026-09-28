@@ -25,7 +25,7 @@ import {
   getGetEmailStatsQueryKey,
   getGetInboxQueryKey,
   getGetBlacklistQueryKey,
-} from "@workspace/api-client-react";
+} from "@aldi1963/temp-mail-api-client";
 import {
   Select,
   SelectContent,

@@ -20,7 +20,7 @@ import {
   useResetInbox,
   getGetInboxQueryKey,
   getGetEmailStatsQueryKey,
-} from "@workspace/api-client-react";
+} from "@aldi1963/temp-mail-api-client";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface InboxEntry {

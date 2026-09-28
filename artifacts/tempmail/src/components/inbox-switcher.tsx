@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useGetInbox } from "@workspace/api-client-react";
+import { useGetInbox } from "@aldi1963/temp-mail-api-client";
 
 interface InboxEntry {
   email: string;

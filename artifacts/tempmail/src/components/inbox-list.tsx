@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EmailMessageSummary } from "@workspace/api-client-react";
+import { EmailMessageSummary } from "@aldi1963/temp-mail-api-client";
 import { userFetch } from "@/hooks/use-auth";
 import { getManageToken } from "@/lib/manage-token";
 import { useToast } from "@/hooks/use-toast";
