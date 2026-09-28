@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
@@ -26,6 +26,7 @@ import { PinPad } from "./PinGate";
 interface Props {
   onOpenPage: (p: NativePage) => void;
   onOpenLogin: () => void;
+  pinFlash?: number;
 }
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: () => void; label: string }) {
@@ -78,7 +79,7 @@ function SettingRow({
 
 type PinFlow = "setup" | "confirm" | "disable" | null;
 
-export function LainnyaTab({ onOpenPage, onOpenLogin }: Props) {
+export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
   const { user, logout } = useNativeAuth();
   const { theme, setTheme } = useTheme();
   const { settings, patch } = useNativeSettings();
@@ -86,6 +87,17 @@ export function LainnyaTab({ onOpenPage, onOpenLogin }: Props) {
   const [pinFlow, setPinFlow] = useState<PinFlow>(null);
   const [firstPin, setFirstPin] = useState("");
   const [pinError, setPinError] = useState("");
+  const pinRowRef = useRef<HTMLDivElement>(null);
+  const [pinHighlight, setPinHighlight] = useState(false);
+
+  // Sorot baris PIN saat dibuka dari tombol kunci di Beranda.
+  useEffect(() => {
+    if (!pinFlash) return;
+    pinRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setPinHighlight(true);
+    const t = window.setTimeout(() => setPinHighlight(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [pinFlash]);
   const dark = theme === "dark";
 
   const menu = [
@@ -238,8 +250,15 @@ export function LainnyaTab({ onOpenPage, onOpenLogin }: Props) {
               label="Hapus OTP otomatis"
             />
           </SettingRow>
-          <SettingRow
-            icon={LockKeyhole}
+          <div
+            ref={pinRowRef}
+            className={cn(
+              "rounded-2xl transition-colors",
+              pinHighlight && "ring-2 ring-primary bg-primary/[0.06]"
+            )}
+          >
+            <SettingRow
+              icon={LockKeyhole}
             label="Kunci aplikasi dengan PIN"
             desc={settings.pinEnabled ? "Aktif" : "Nonaktif"}
           >
@@ -252,7 +271,8 @@ export function LainnyaTab({ onOpenPage, onOpenLogin }: Props) {
               }}
               label="Kunci aplikasi dengan PIN"
             />
-          </SettingRow>
+            </SettingRow>
+          </div>
         </div>
 
         {pinFlow && (

@@ -1,6 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { CheckCheck, Copy, Dices, LogIn, Mail, Moon, Pencil, QrCode, RefreshCw, Sun, X } from "lucide-react";
+import {
+  CheckCheck,
+  Clock,
+  Copy,
+  Flame,
+  Inbox,
+  KeyRound,
+  LogIn,
+  Mail,
+  Moon,
+  Pencil,
+  QrCode,
+  RefreshCw,
+  Sun,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useTheme } from "@/components/theme-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -11,27 +28,29 @@ import { NativeInboxList } from "./NativeInboxList";
 import type { NativeMsg } from "./NativeInboxList";
 import { OtpSection } from "./OtpSection";
 import { CustomAddressForm } from "./CustomAddressForm";
+import { nativeFetch, manageHeaders } from "./api";
 
 interface Props {
   mailbox: NativeMailbox;
   onSelectMessage: (id: string) => void;
   onOpenAccount: () => void;
   onOpenAddresses: () => void;
+  onOpenPin: () => void;
 }
 
-function HeroBtn({
+function StatIconBtn({
   label,
   onClick,
+  danger,
+  armed,
   disabled,
-  active,
-  primary,
   children,
 }: {
   label: string;
   onClick: () => void;
+  danger?: boolean;
+  armed?: boolean;
   disabled?: boolean;
-  active?: boolean;
-  primary?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -42,12 +61,12 @@ function HeroBtn({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "inline-flex flex-col items-center justify-center gap-1 rounded-2xl py-2.5 text-[12px] font-bold active:scale-[0.97] disabled:opacity-50 min-w-0",
-        primary
-          ? "bg-primary text-primary-foreground"
-          : active
-            ? "bg-primary/15 text-primary border border-primary/40"
-            : "bg-background border border-border/70 text-foreground"
+        "w-8 h-8 rounded-full flex items-center justify-center shrink-0 active:scale-90 disabled:opacity-50",
+        armed
+          ? "bg-destructive/15 text-destructive animate-pulse"
+          : danger
+            ? "text-destructive/70 active:bg-destructive/10"
+            : "text-muted-foreground active:bg-muted"
       )}
     >
       {children}
@@ -55,15 +74,34 @@ function HeroBtn({
   );
 }
 
-export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
+export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin }: Props) {
   const { theme, setTheme } = useTheme();
   const { user } = useNativeAuth();
   const { toast } = useToast();
   const [justCopied, setJustCopied] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [confirmDestroy, setConfirmDestroy] = useState(false);
+  const [extending, setExtending] = useState(false);
   const dark = theme === "dark";
   const messages = (mailbox.inbox?.messages ?? []) as unknown as NativeMsg[];
+
+  const activeEntry = useMemo(
+    () => mailbox.mergedInboxList.find((e) => e.email === mailbox.activeEmail) ?? null,
+    [mailbox.mergedInboxList, mailbox.activeEmail]
+  );
+
+  // Kedaluwarsa = 30 hari dari pembuatan (seperti web).
+  const expiryLabel = useMemo(() => {
+    if (!activeEntry) return "30 hari";
+    const t = Date.parse(activeEntry.addedAt ?? "");
+    if (Number.isNaN(t)) return "30 hari";
+    return new Date(t + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }, [activeEntry]);
 
   const copyEmail = async () => {
     if (!mailbox.activeEmail) return;
@@ -86,6 +124,63 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
     setCustomOpen(false);
     setQrOpen((o) => !o);
   };
+
+  const extend = async () => {
+    if (!mailbox.activeEmail || extending) return;
+    setExtending(true);
+    try {
+      const data = await nativeFetch<{ appliedMinutes?: number }>("/api/email/extend", {
+        method: "POST",
+        headers: manageHeaders(mailbox.activeEmail),
+        body: JSON.stringify({ email: mailbox.activeEmail, extraMinutes: 60 }),
+      });
+      const mins = data?.appliedMinutes ?? 60;
+      toast({ title: `Diperpanjang +${mins} menit`, description: "Masa aktif alamat bertambah." });
+    } catch (e) {
+      toast({
+        title: "Gagal memperpanjang",
+        description: e instanceof Error ? e.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    } finally {
+      setExtending(false);
+    }
+  };
+
+  // Musnahkan permanen: ketuk dua kali (tanpa popup).
+  const destroy = async () => {
+    if (!mailbox.activeEmail) return;
+    if (!confirmDestroy) {
+      setConfirmDestroy(true);
+      toast({ title: "Ketuk lagi untuk musnahkan permanen" });
+      window.setTimeout(() => setConfirmDestroy(false), 4000);
+      return;
+    }
+    setConfirmDestroy(false);
+    try {
+      await nativeFetch(`/api/email/destroy?email=${encodeURIComponent(mailbox.activeEmail)}`, {
+        method: "DELETE",
+        headers: manageHeaders(mailbox.activeEmail),
+      });
+      mailbox.removeFromList(mailbox.activeEmail);
+      toast({ title: "Alamat dimusnahkan permanen" });
+    } catch (e) {
+      toast({
+        title: "Gagal memusnahkan",
+        description: e instanceof Error ? e.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeActive = () => {
+    if (!mailbox.activeEmail) return;
+    mailbox.removeFromList(mailbox.activeEmail);
+    toast({ title: "Alamat dihapus dari daftar" });
+  };
+
+  const [local, domain] = (mailbox.activeEmail ?? "").split("@");
+  const total = messages.length;
 
   return (
     <div>
@@ -124,53 +219,100 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
         </div>
       </div>
 
-      {/* Hero alamat aktif */}
+      {/* Hero: SATU card ala panel web */}
       <div className="px-3 pt-3">
-        <div className="rounded-3xl bg-primary/[0.08] border border-primary/20 p-4">
-          <div className="text-[10px] font-bold tracking-[1.5px] text-primary mb-1.5">
-            ALAMAT AKTIF
-          </div>
+        <div className="rounded-3xl bg-primary/[0.08] border border-primary/20 p-3 space-y-2.5">
           {mailbox.activeEmail ? (
             <>
-              <button type="button" onClick={copyEmail} className="w-full text-left active:opacity-70">
-                <span className="block text-[16px] font-extrabold truncate">
-                  {mailbox.activeEmail}
+              {/* Bar alamat + Salin */}
+              <div className="flex items-stretch rounded-2xl border border-primary/25 bg-background overflow-hidden">
+                <span className="pl-3 pr-1 flex items-center shrink-0">
+                  <Mail className="h-4 w-4 text-primary" />
                 </span>
-                <span className="block text-[11px] text-muted-foreground mt-0.5">
-                  {justCopied ? "Disalin!" : "Ketuk untuk menyalin"}
-                </span>
-              </button>
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                <HeroBtn label="Salin alamat" primary onClick={copyEmail}>
-                  <Copy className="h-[18px] w-[18px]" />
-                  Salin
-                </HeroBtn>
-                <HeroBtn
-                  label="Buat alamat acak baru"
+                <button
+                  type="button"
+                  onClick={copyEmail}
+                  title={`${mailbox.activeEmail} — ketuk untuk menyalin`}
+                  className="flex-1 min-w-0 px-2 py-3 text-left active:opacity-70"
+                >
+                  <span className="block w-full font-mono text-[15px] font-extrabold tracking-tight truncate">
+                    <span className="text-foreground">{local}</span>
+                    <span className="text-primary font-semibold">@{domain}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={copyEmail}
+                  className="px-4 flex items-center gap-1.5 bg-primary text-primary-foreground text-[13px] font-bold active:scale-[0.97] shrink-0"
+                >
+                  {justCopied ? (
+                    <CheckCheck className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                  {justCopied ? "Disalin" : "Salin"}
+                </button>
+              </div>
+
+              {/* Baris tombol ala web */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
                   onClick={() => mailbox.generateEmail()}
                   disabled={mailbox.isGenerating}
+                  className="flex-[2] min-w-0 rounded-2xl bg-primary text-primary-foreground text-[13px] font-extrabold py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-60"
                 >
-                  <Dices className="h-[18px] w-[18px]" />
-                  {mailbox.isGenerating ? "…" : "Acak"}
-                </HeroBtn>
-                <HeroBtn label="Buat alamat kustom" active={customOpen} onClick={toggleCustom}>
-                  {customOpen ? <X className="h-[18px] w-[18px]" /> : <Pencil className="h-[18px] w-[18px]" />}
+                  <Zap className={cn("h-4 w-4", mailbox.isGenerating && "animate-spin")} />
+                  {mailbox.isGenerating ? "Membuat…" : "Acak Baru"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCustom}
+                  className={cn(
+                    "flex-[1.4] min-w-0 rounded-2xl border text-[13px] font-extrabold py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98]",
+                    customOpen
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border/70 bg-background text-foreground"
+                  )}
+                >
+                  {customOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                   Kustom
-                </HeroBtn>
-                <HeroBtn label="Tampilkan QR alamat" active={qrOpen} onClick={toggleQr}>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Pengaturan kunci PIN"
+                  title="Pengaturan kunci PIN"
+                  onClick={onOpenPin}
+                  className="w-11 h-11 rounded-2xl border border-border/70 bg-background flex items-center justify-center active:scale-95 shrink-0"
+                >
+                  <KeyRound className="h-[18px] w-[18px]" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Tampilkan QR alamat"
+                  title="Tampilkan QR alamat"
+                  onClick={toggleQr}
+                  className={cn(
+                    "w-11 h-11 rounded-2xl border flex items-center justify-center active:scale-95 shrink-0",
+                    qrOpen
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border/70 bg-background text-foreground"
+                  )}
+                >
                   <QrCode className="h-[18px] w-[18px]" />
-                  QR
-                </HeroBtn>
+                </button>
               </div>
+
+              {/* Panel inline: kustom / QR */}
               {customOpen && (
                 <CustomAddressForm
                   mailbox={mailbox}
                   onDone={() => setCustomOpen(false)}
-                  className="mt-2 bg-background"
+                  className="bg-background"
                 />
               )}
               {qrOpen && (
-                <div className="mt-2 rounded-2xl border border-border/70 bg-background p-4 flex flex-col items-center gap-3">
+                <div className="rounded-2xl border border-border/70 bg-background p-4 flex flex-col items-center gap-3">
                   <div className="bg-white p-3 rounded-2xl">
                     <QRCodeSVG value={mailbox.activeEmail} size={160} />
                   </div>
@@ -186,22 +328,63 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
                   </button>
                 </div>
               )}
+
+              {/* Baris stats ala web */}
+              <div className="flex items-center gap-2 px-1 pt-0.5">
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-muted-foreground min-w-0 flex-1">
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <Inbox className="h-3.5 w-3.5" />
+                    <b className="text-foreground">{total}</b> total
+                  </span>
+                  <span aria-hidden="true">•</span>
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <Mail className="h-3.5 w-3.5" />
+                    <b className="text-primary">{mailbox.unreadCount}</b> baru
+                  </span>
+                  <span aria-hidden="true">•</span>
+                  <span className="whitespace-nowrap">Aktif s/d {expiryLabel}</span>
+                </div>
+                <div className="flex items-center shrink-0">
+                  <StatIconBtn
+                    label={extending ? "Memperpanjang…" : "Perpanjang masa aktif"}
+                    onClick={extend}
+                    disabled={extending}
+                  >
+                    <Clock className={cn("h-[18px] w-[18px]", extending && "animate-spin")} />
+                  </StatIconBtn>
+                  <StatIconBtn
+                    label={confirmDestroy ? "Ketuk lagi untuk musnahkan permanen" : "Musnahkan permanen"}
+                    onClick={destroy}
+                    danger
+                    armed={confirmDestroy}
+                  >
+                    <Flame className="h-[18px] w-[18px]" />
+                  </StatIconBtn>
+                  <StatIconBtn label="Hapus dari daftar" onClick={removeActive}>
+                    <Trash2 className="h-[18px] w-[18px]" />
+                  </StatIconBtn>
+                </div>
+              </div>
             </>
           ) : (
             <>
+              <div className="text-[10px] font-bold tracking-[1.5px] text-primary px-1 pt-1">
+                ALAMAT EMAIL
+              </div>
               <button
                 type="button"
                 onClick={() => mailbox.generateEmail()}
                 disabled={mailbox.isGenerating}
-                className="w-full rounded-2xl bg-primary text-primary-foreground text-[14px] font-extrabold py-3 active:scale-[0.99] disabled:opacity-60"
+                className="w-full rounded-2xl bg-primary text-primary-foreground text-[14px] font-extrabold py-3 flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-60"
               >
+                <Zap className={cn("h-4 w-4", mailbox.isGenerating && "animate-spin")} />
                 {mailbox.isGenerating ? "Membuat…" : "Buat alamat email"}
               </button>
               <button
                 type="button"
                 onClick={toggleCustom}
                 className={cn(
-                  "w-full mt-2 rounded-2xl border-2 px-4 py-2.5 text-[13px] font-extrabold flex items-center justify-center gap-2 active:scale-[0.99]",
+                  "w-full rounded-2xl border-2 px-4 py-2.5 text-[13px] font-extrabold flex items-center justify-center gap-2 active:scale-[0.99]",
                   customOpen
                     ? "border-primary bg-primary/[0.08] text-primary"
                     : "border-primary/50 text-primary"
@@ -214,7 +397,7 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
                 <CustomAddressForm
                   mailbox={mailbox}
                   onDone={() => setCustomOpen(false)}
-                  className="mt-2 bg-background"
+                  className="bg-background"
                 />
               )}
             </>

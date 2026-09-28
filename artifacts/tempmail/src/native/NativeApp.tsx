@@ -76,6 +76,7 @@ function NativeAppInner() {
   const [unlocked, setUnlocked] = useState(!settings.pinEnabled);
   const mailbox = useNativeMailbox(unlocked);
   const [tab, setTab] = useState<NativeTab>("beranda");
+  const [pinFlash, setPinFlash] = useState(0);
   const [page, setPage] = useState<NativePage | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -163,11 +164,15 @@ function NativeAppInner() {
                 onSelectMessage={setMessageId}
                 onOpenAccount={() => setTab("lainnya")}
                 onOpenAddresses={() => setTab("alamat")}
+                onOpenPin={() => {
+                  setPinFlash((k) => k + 1);
+                  setTab("lainnya");
+                }}
               />
             )}
             {tab === "alamat" && <AlamatTab mailbox={mailbox} />}
             {tab === "lainnya" && (
-              <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} />
+              <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} pinFlash={pinFlash} />
             )}
           </>
         ) : (
