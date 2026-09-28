@@ -7,6 +7,7 @@ import { pool } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { nativeTokenAuth } from "./lib/auth";
+import { maintenanceMiddleware } from "./middlewares/maintenance";
 
 const PgSession = connectPgSimple(session);
 
@@ -115,6 +116,11 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Mode pemeliharaan: jawab 503 untuk semua /api/* kecuali /api/admin/*
+// dan health check. Dipasang SETELAH static + SPA fallback (keduanya sudah
+// melewatkan /api/*) dan SEBELUM router /api.
+app.use(maintenanceMiddleware);
 
 app.use("/api", router);
 
