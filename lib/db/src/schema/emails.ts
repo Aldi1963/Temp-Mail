@@ -35,6 +35,8 @@ export const emailAddressesTable = pgTable("email_addresses", {
   userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
   manageTokenHash: text("manage_token_hash"),
   label: text("label"),
+  // Retensi hapus pesan otomatis (dalam hari). NULL = fitur mati.
+  autoDeleteDays: integer("auto_delete_days"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 }, (t) => [index("idx_email_addresses_expires_at").on(t.expiresAt)]);

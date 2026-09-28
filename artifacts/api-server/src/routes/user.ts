@@ -24,6 +24,7 @@ router.get("/emails", async (req, res) => {
         email: e.email,
         domain: e.domain,
         label: e.label ?? null,
+        autoDeleteDays: e.autoDeleteDays ?? null,
         createdAt: e.createdAt,
         expiresAt: e.expiresAt,
         isExpired: e.expiresAt < new Date(),
@@ -181,6 +182,49 @@ router.delete("/emails", async (req, res) => {
     .set({ userId: null })
     .where(eq(emailAddressesTable.email, addr.email));
   res.json({ email: addr.email, removed: true, message: "Alamat dihapus dari daftar akun Anda." });
+});
+
+// Atur retensi hapus pesan otomatis per alamat (dalam hari).
+// autoDeleteDays: null = fitur mati, atau salah satu dari 1/7/30.
+// Pesan yang received_at-nya lebih tua dari N hari akan dihapus permanen
+// oleh scheduler tiap 1 jam (lihat lib/cleanup.ts).
+router.patch("/emails/retention", async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  const { email, autoDeleteDays } = req.body ?? {};
+  if (!email || typeof email !== "string") {
+    res.status(400).json({ error: "Bad request", message: "email wajib diisi." });
+    return;
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const days =
+    autoDeleteDays === null || autoDeleteDays === undefined
+      ? null
+      : Number(autoDeleteDays);
+  if (days !== null && ![1, 7, 30].includes(days)) {
+    res.status(400).json({
+      error: "Bad request",
+      message: "autoDeleteDays harus null atau salah satu dari 1, 7, 30.",
+    });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.email, cleanEmail))
+    .limit(1);
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Alamat tidak ditemukan." });
+    return;
+  }
+  if (rows[0].userId !== userId) {
+    res.status(403).json({ error: "Forbidden", message: "Alamat ini bukan milik akun Anda." });
+    return;
+  }
+  await db
+    .update(emailAddressesTable)
+    .set({ autoDeleteDays: days })
+    .where(eq(emailAddressesTable.email, cleanEmail));
+  res.json({ email: cleanEmail, autoDeleteDays: days });
 });
 
 router.patch("/emails/label", async (req, res) => {
