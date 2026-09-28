@@ -1,8 +1,9 @@
 import { Router, Request } from "express";
 import { db } from "@workspace/db";
-import { emailAddressesTable, messagesTable, blockedSendersTable } from "@workspace/db";
+import { emailAddressesTable, messagesTable, blockedSendersTable, siteSettingsTable, customDomainsTable } from "@workspace/db";
 import { eq, and, desc, lt } from "drizzle-orm";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash, timingSafeEqual } from "crypto";
+import rateLimit from "express-rate-limit";
 import { publicOrApiKey } from "../lib/auth.js";
 import {
   GenerateEmailQueryParams,
@@ -19,12 +20,43 @@ import {
 
 const router = Router();
 
-const AVAILABLE_DOMAINS = ["tmpmail.dev", "quickmail.io", "throwaway.net"];
-const SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
-// Hard cap on total lifetime, counted from first creation. Prevents abuse
-// where a caller keeps extending forever to keep a free address alive.
-const MAX_LIFETIME_MS = 24 * 60 * 60 * 1000; // 24 hours
-const MAX_EXTRA_MINUTES = 1440; // single-call cap (24h)
+const FALLBACK_DOMAINS = ["tmpmail.dev", "quickmail.io", "throwaway.net"];
+
+export async function getActiveDomains(): Promise<string[]> {
+  try {
+    const rows = await db
+      .select()
+      .from(siteSettingsTable)
+      .where(eq(siteSettingsTable.key, "available_domains"));
+    if (rows.length > 0 && rows[0].value) {
+      const parsed = JSON.parse(rows[0].value);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return FALLBACK_DOMAINS;
+}
+
+export async function getUserCustomDomains(userId: number): Promise<string[]> {
+  try {
+    const rows = await db
+      .select({ domain: customDomainsTable.domain })
+      .from(customDomainsTable)
+      .where(and(eq(customDomainsTable.userId, userId), eq(customDomainsTable.status, "active")));
+    return rows.map((r) => r.domain);
+  } catch {
+    return [];
+  }
+}
+
+const AVAILABLE_DOMAINS = FALLBACK_DOMAINS;
+// Masa aktif email dan pesan diset 30 hari
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const MAX_EXTRA_MINUTES = 30 * 24 * 60; // 30 days
 
 function generateUsername(length = 8): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -40,10 +72,48 @@ function generateMessageId(): string {
   return randomBytes(16).toString("hex");
 }
 
-async function cleanupExpiredData() {
-  const now = new Date();
-  await db.delete(messagesTable).where(lt(messagesTable.expiresAt, now));
-  await db.delete(emailAddressesTable).where(lt(emailAddressesTable.expiresAt, now));
+/**
+ * [SECURITY] Kepemilikan alamat untuk operasi destruktif (/reset, /destroy).
+ *
+ * Desain pragmatis untuk alur temp-mail anonim:
+ * - Saat alamat DIBUAT, server menerbitkan manage token acak (dikembalikan di
+ *   respons /generate, disimpan frontend di localStorage). Hanya hash SHA-256
+ *   yang disimpan di DB.
+ * - /reset & /destroy wajib menyertakan token via header X-Manage-Token
+ *   (atau query ?manageToken=), KECUALI: sesi login pemilik alamat atau
+ *   API key pemilik alamat.
+ * - Alamat lama (manageTokenHash NULL, dibuat sebelum fitur ini): tetap
+ *   diizinkan seperti dulu (legacy) demi kompatibilitas, tapi sudah
+ *   dilindungi rate limiter.
+ */
+function generateManageToken(): string {
+  return `tmm_${randomBytes(24).toString("hex")}`;
+}
+function hashManageToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+function manageTokenMatches(provided: string, storedHash: string): boolean {
+  const a = Buffer.from(hashManageToken(provided), "utf8");
+  const b = Buffer.from(storedHash, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+async function checkAddressOwnership(req: Request, email: string): Promise<{ ok: boolean; notFound?: boolean }> {
+  const rows = await db
+    .select()
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.email, email))
+    .limit(1);
+  if (rows.length === 0) return { ok: false, notFound: true };
+  const addr = rows[0];
+  if (!addr.manageTokenHash) return { ok: true }; // legacy: dibuat sebelum fitur token
+  const provided =
+    (req.headers["x-manage-token"] as string) || (req.query.manageToken as string) || "";
+  if (provided && manageTokenMatches(provided, addr.manageTokenHash)) return { ok: true };
+  const sessionUserId = (req as Request & { session?: { userId?: number } }).session?.userId;
+  if (sessionUserId && addr.userId && addr.userId === sessionUserId) return { ok: true };
+  const apiKeyUserId = (req as Request & { apiKeyUserId?: number }).apiKeyUserId;
+  if (apiKeyUserId && addr.userId && addr.userId === apiKeyUserId) return { ok: true };
+  return { ok: false };
 }
 
 /** Returns missing query-param key, or null if every key is a non-empty string. */
@@ -59,33 +129,57 @@ function missingQueryParam(req: Request, ...keys: string[]): string | null {
 
 router.use(publicOrApiKey);
 
-router.get("/generate", async (req, res) => {
+// [SECURITY] Anti-abuse: batas laju per IP untuk seluruh endpoint email publik.
+// Polling inbox normal (tiap beberapa detik) jauh di bawah batas ini.
+const emailGeneralLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too Many Requests", message: "Terlalu banyak permintaan. Coba lagi beberapa saat." },
+});
+const generateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too Many Requests", message: "Terlalu banyak pembuatan alamat. Coba lagi dalam 1 jam." },
+});
+router.use(emailGeneralLimiter);
+
+router.get("/generate", generateLimiter, async (req, res) => {
   const parsed = GenerateEmailQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Bad request", message: "Invalid query parameters" });
     return;
   }
 
-  await cleanupExpiredData();
-
   const { username, domain } = parsed.data;
-  const selectedDomain = domain && AVAILABLE_DOMAINS.includes(domain) ? domain : AVAILABLE_DOMAINS[0];
+  const activeDomains = await getActiveDomains();
+  const genUserId = req.session?.userId ?? (req as any).apiKeyUserId ?? null;
+  const allowedDomains = genUserId
+    ? [...activeDomains, ...(await getUserCustomDomains(genUserId))]
+    : activeDomains;
+  const selectedDomain = domain && allowedDomains.includes(domain) ? domain : activeDomains[0];
   const selectedUsername = username && /^[a-z0-9._-]{1,30}$/.test(username) ? username : generateUsername();
   const email = `${selectedUsername}@${selectedDomain}`;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
 
   const existing = await db.select().from(emailAddressesTable).where(eq(emailAddressesTable.email, email)).limit(1);
-  const userId = req.session?.userId ?? null;
+  const userId = genUserId;
 
   let effectiveCreatedAt = now;
   let effectiveExpiresAt = expiresAt;
+  let manageToken: string | undefined;
   if (existing.length === 0) {
+    manageToken = generateManageToken();
     await db.insert(emailAddressesTable).values({
       email,
       username: selectedUsername,
       domain: selectedDomain,
       userId,
+      manageTokenHash: hashManageToken(manageToken),
       createdAt: now,
       expiresAt,
     });
@@ -111,6 +205,13 @@ router.get("/generate", async (req, res) => {
       expiresAt > maxExpiresAt ? maxExpiresAt : expiresAt;
     const updateData: Record<string, unknown> = { expiresAt: refreshedExpiresAt };
     if (userId && !existingRow.userId) updateData.userId = userId;
+    // Bila pemanggil terbukti pemilik (token valid / sesi / api key), rotasi token
+    // agar pemilik yang kehilangan token bisa mendapat yang baru.
+    const reuseOwnership = await checkAddressOwnership(req, email);
+    if (reuseOwnership.ok && existingRow.manageTokenHash) {
+      manageToken = generateManageToken();
+      updateData.manageTokenHash = hashManageToken(manageToken);
+    }
     await db
       .update(emailAddressesTable)
       .set(updateData)
@@ -125,6 +226,9 @@ router.get("/generate", async (req, res) => {
     domain: selectedDomain,
     expiresAt: effectiveExpiresAt.toISOString(),
     createdAt: effectiveCreatedAt.toISOString(),
+    // manageToken hanya dikembalikan saat alamat BARU dibuat atau saat
+    // kepemilikan terbukti (rotasi). Simpan di sisi klien; hanya hash yang disimpan server.
+    ...(manageToken ? { manageToken } : {}),
   });
 });
 
@@ -136,11 +240,10 @@ router.get("/inbox", async (req, res) => {
     return;
   }
 
-  await cleanupExpiredData();
-
   const { email } = parsed.data;
+  const wantArchived = req.query.archived === "true";
   const [messages, blocked] = await Promise.all([
-    db.select().from(messagesTable).where(eq(messagesTable.email, email)).orderBy(desc(messagesTable.receivedAt)),
+    db.select().from(messagesTable).where(and(eq(messagesTable.email, email), eq(messagesTable.archived, wantArchived))).orderBy(desc(messagesTable.receivedAt)),
     db.select().from(blockedSendersTable).where(eq(blockedSendersTable.email, email)),
   ]);
 
@@ -164,6 +267,7 @@ router.get("/inbox", async (req, res) => {
     receivedAt: m.receivedAt.toISOString(),
     isRead: m.isRead,
     hasAttachments: m.hasAttachments,
+    archived: m.archived,
   }));
 
   res.json({
@@ -199,6 +303,18 @@ router.post("/blacklist", async (req, res) => {
     return;
   }
   const { email, pattern } = parsed.data;
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
   const normalized = pattern.toLowerCase().trim();
 
   const existing = await db
@@ -224,6 +340,18 @@ router.delete("/blacklist", async (req, res) => {
     return;
   }
   const { email, pattern } = parsed.data;
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
   await db
     .delete(blockedSendersTable)
     .where(and(eq(blockedSendersTable.email, email), eq(blockedSendersTable.pattern, pattern)));
@@ -296,6 +424,76 @@ router.patch("/message/read", async (req, res) => {
   res.json({ success: true, message: "Message marked as read" });
 });
 
+// Hapus satu pesan (swipe kiri ala Gmail)
+router.delete("/message", async (req, res) => {
+  const miss = missingQueryParam(req, "id", "email");
+  const parsed = GetMessageQueryParams.safeParse(req.query);
+  if (miss || !parsed.success || !parsed.data.id || !parsed.data.email) {
+    res.status(400).json({ error: "Bad request", message: "id and email are required" });
+    return;
+  }
+
+  const { id, email } = parsed.data;
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
+  const deleted = await db
+    .delete(messagesTable)
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)))
+    .returning({ id: messagesTable.id });
+
+  if (deleted.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Message not found" });
+    return;
+  }
+
+  res.json({ success: true, message: "Message deleted" });
+});
+
+// Arsip / batal arsip satu pesan (swipe kanan ala Gmail)
+router.patch("/message/archive", async (req, res) => {
+  const body = (req.body ?? {}) as { id?: unknown; email?: unknown; archived?: unknown };
+  if (typeof body.id !== "string" || !body.id || typeof body.email !== "string" || !body.email || typeof body.archived !== "boolean") {
+    res.status(400).json({ error: "Bad request", message: "id, email, and archived are required" });
+    return;
+  }
+
+  const { id, email, archived } = body as { id: string; email: string; archived: boolean };
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
+  const updated = await db
+    .update(messagesTable)
+    .set({ archived })
+    .where(and(eq(messagesTable.id, id), eq(messagesTable.email, email)))
+    .returning({ id: messagesTable.id });
+
+  if (updated.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Message not found" });
+    return;
+  }
+
+  res.json({ success: true, archived, message: archived ? "Message archived" : "Message unarchived" });
+});
+
 router.delete("/reset", async (req, res) => {
   const miss = missingQueryParam(req, "email");
   const parsed = ResetInboxQueryParams.safeParse(req.query);
@@ -305,13 +503,57 @@ router.delete("/reset", async (req, res) => {
   }
 
   const { email } = parsed.data;
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
   await db.delete(messagesTable).where(eq(messagesTable.email, email));
 
   res.json({ success: true, message: "Inbox cleared" });
 });
 
-router.get("/domains", async (_req, res) => {
-  res.json({ domains: AVAILABLE_DOMAINS });
+// Self-Destruct Burner: Permanently delete email address and all its messages
+router.delete("/destroy", async (req, res) => {
+  const email = (req.query.email as string || req.body?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Bad request", message: "email is required" });
+    return;
+  }
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
+  // Cascade delete messages and the address record
+  await db.delete(messagesTable).where(eq(messagesTable.email, email));
+  await db.delete(emailAddressesTable).where(eq(emailAddressesTable.email, email));
+
+  res.json({ success: true, message: `Email ${email} berhasil dimusnahkan secara permanen.` });
+});
+
+router.get("/domains", async (req, res) => {
+  const domains = await getActiveDomains();
+  const domUserId = req.session?.userId ?? (req as any).apiKeyUserId ?? null;
+  if (domUserId) {
+    const mine = await getUserCustomDomains(domUserId);
+    const merged = [...domains, ...mine.filter((d) => !domains.includes(d))];
+    res.json({ domains: merged });
+    return;
+  }
+  res.json({ domains });
 });
 
 router.get("/stats", async (req, res) => {
@@ -383,6 +625,18 @@ router.post("/extend", async (req, res) => {
   }
 
   const { email } = parsed.data;
+
+  const ownership = await checkAddressOwnership(req, email);
+  if (!ownership.ok) {
+    res.status(ownership.notFound ? 404 : 403).json({
+      error: ownership.notFound ? "Not found" : "Forbidden",
+      message: ownership.notFound
+        ? "Alamat email tidak ditemukan."
+        : "Operasi ini butuh bukti kepemilikan alamat (header X-Manage-Token).",
+    });
+    return;
+  }
+
   // Server-side belt-and-suspenders integer + range guard. The openapi
   // schema declares `type: integer` but the generated zod uses
   // .number().min(1).max(1440), which lets fractional values slip through.

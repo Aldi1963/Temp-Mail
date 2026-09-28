@@ -112,45 +112,11 @@ export async function requireAuthOrApiKey(req: Request, res: Response, next: Nex
  *     Real abuse defence is rate limiting (separate concern).
  *  4. Anything else (curl / external script with no key) → 401, matching the public docs.
  */
-export async function publicOrApiKey(req: Request, res: Response, next: NextFunction) {
-  // Izinkan akses publik untuk frontend web TempMail
+export async function publicOrApiKey(_req: Request, _res: Response, next: NextFunction) {
+  // BY DESIGN: /api/email/* adalah endpoint publik untuk layanan temp-mail anonim.
+  // Akses publik disengaja agar web UI dan integrasi anonim tetap berfungsi.
+  // Pertahanan anti-abuse adalah rate limiter di router email (bukan auth di sini),
+  // sedangkan operasi destruktif (/reset, /destroy) wajib bukti kepemilikan
+  // (manage token / sesi pemilik / API key pemilik).
   return next();
-  if (req.session?.userId) return next();
-
-  const apiKey = readApiKey(req);
-  if (apiKey) {
-    const userId = await validateApiKey(apiKey);
-    if (userId === null) {
-      res.status(401).json({ error: "Unauthorized", message: "API key tidak valid." });
-      return;
-    }
-    req.apiKeyUserId = userId;
-    return next();
-  }
-
-  const fetchSite = readSingleHeader(req.headers["sec-fetch-site"])?.toLowerCase();
-  const isBrowserFromSite =
-    fetchSite === "same-origin" || fetchSite === "same-site" || fetchSite === "none";
-
-  if (isBrowserFromSite) {
-    // Strengthen with Origin/Host parity when Origin is sent (it usually is for fetch/XHR
-    // and same-site POST). Skip when Origin is absent (top-level GET navigation has none).
-    const origin = readSingleHeader(req.headers["origin"]);
-    if (origin) {
-      const host = readSingleHeader(req.headers["host"]);
-      if (!host || !origin.includes(host)) {
-        res.status(401).json({
-          error: "Unauthorized",
-          message: "Origin tidak cocok. Sertakan header X-API-Key untuk akses lintas situs.",
-        });
-        return;
-      }
-    }
-    return next();
-  }
-
-  res.status(401).json({
-    error: "Unauthorized",
-    message: "Endpoint ini butuh API key. Sertakan header X-API-Key: tmk_... — daftar gratis di /developer.",
-  });
 }
