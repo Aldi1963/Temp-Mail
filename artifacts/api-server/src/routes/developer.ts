@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { randomBytes, createHmac } from "crypto";
 import bcrypt from "bcryptjs";
 import { requireAuth } from "../lib/auth.js";
+import { validateWebhookUrl } from "../lib/ssrf-guard.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -151,6 +152,14 @@ router.post("/webhooks", async (req, res) => {
     new URL(url);
   } catch {
     res.status(400).json({ error: "Bad request", message: "URL tidak valid." });
+    return;
+  }
+
+  // [SECURITY] Anti-SSRF: tolak URL ke IP privat/loopback/link-local/metadata cloud.
+  // Hanya http/https ke host publik yang diizinkan.
+  const ssrfError = await validateWebhookUrl(url);
+  if (ssrfError) {
+    res.status(400).json({ error: "Bad request", message: `URL webhook ditolak: ${ssrfError}` });
     return;
   }
 
@@ -319,6 +328,17 @@ async function triggerWebhooksForEmail(
       events = ["new_message"];
     }
     if (!events.includes(event)) continue;
+
+    // [SECURITY] Validasi ulang URL sebelum POST (anti DNS-rebinding):
+    // hostname bisa berubah resolve ke IP internal setelah registrasi.
+    const triggerCheck = await validateWebhookUrl(hook.url);
+    if (triggerCheck) {
+      await db
+        .update(webhooksTable)
+        .set({ failCount: hook.failCount + 1 })
+        .where(eq(webhooksTable.id, hook.id));
+      continue;
+    }
 
     const payload = { event, timestamp: now.toISOString(), data };
     const sig = createHmac("sha256", hook.secret)

@@ -13,6 +13,7 @@ const PUBLIC_BRANDING_KEYS = [
   "meta_title",
   "meta_keywords",
   "footer_text",
+  "telegram_bot_username",
 ];
 
 router.get("/branding", async (_req, res) => {
