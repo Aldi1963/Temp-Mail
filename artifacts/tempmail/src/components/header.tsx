@@ -52,8 +52,8 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
     <header className="app-header border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-50">
       <div className="flex h-14 items-center justify-between px-4 md:px-6 max-w-screen-2xl mx-auto">
         {/* Brand */}
-        <Link href="/">
-          <div className="flex items-center gap-2.5 cursor-pointer select-none group">
+        <Link href="/" className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2.5 cursor-pointer select-none group">
             <div className="relative">
               {siteLogo ? (
                 <div className="relative h-9 w-9 rounded-lg overflow-hidden border border-border/60 bg-muted/30 flex items-center justify-center">
@@ -68,7 +68,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
                 </>
               )}
             </div>
-            <div className="hidden min-[400px]:flex items-baseline gap-1.5">
+            <div className="hidden min-w-0 min-[400px]:flex items-baseline gap-1.5">
               <span className="font-bold text-base tracking-tight text-foreground truncate max-w-[42vw] sm:max-w-none">{siteName}</span>
               <span className="hidden sm:inline text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full leading-none">
                 GRATIS
@@ -275,7 +275,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Link href="/login">
+              <Link href="/login" className="shrink-0">
                 <Button size="sm" title="Masuk" aria-label="Masuk" className="h-8 gap-1.5 text-xs bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
                   <LogIn className="h-3.5 w-3.5" />
                   <span className="hidden min-[400px]:inline">Masuk</span>
