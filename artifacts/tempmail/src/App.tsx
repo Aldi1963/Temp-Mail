@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import { ApplyBranding } from "@/hooks/use-branding";
+import { ApplyBranding, useBranding } from "@/hooks/use-branding";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import LandingPage from "@/pages/landing";
@@ -68,6 +68,42 @@ class ErrorBoundary extends React.Component<
 }
 
 const queryClient = new QueryClient();
+const bootStart = Date.now();
+
+function hideAppSplash() {
+  (window as any).__appBooted = true;
+  const splash = document.getElementById("app-splash");
+  if (!splash || splash.classList.contains("hide")) return;
+  splash.classList.add("hide");
+  setTimeout(() => splash.remove(), 400);
+}
+
+// Splash statis di index.html disembunyikan setelah auth + branding siap
+// (minimal tampil 800ms agar tidak kedip, maksimal 4 detik).
+function SplashHider() {
+  const { isLoading: authLoading } = useAuth();
+  const { isLoading: brandingLoading } = useBranding();
+  const done = React.useRef(false);
+
+  React.useEffect(() => {
+    if (done.current || authLoading || brandingLoading) return;
+    done.current = true;
+    const wait = Math.max(0, 800 - (Date.now() - bootStart));
+    const t = setTimeout(hideAppSplash, wait);
+    return () => clearTimeout(t);
+  }, [authLoading, brandingLoading]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      if (done.current) return;
+      done.current = true;
+      hideAppSplash();
+    }, 4000);
+    return () => clearTimeout(t);
+  }, []);
+
+  return null;
+}
 
 function ProtectedRoute({ component: Component, adminOnly }: { component: React.ComponentType; adminOnly?: boolean }) {
   const { user, isLoading } = useAuth();
@@ -143,6 +179,7 @@ function App() {
           <TooltipProvider>
             <AuthProvider>
               <ApplyBranding />
+              <SplashHider />
               <WouterRouter base={ROUTER_BASE}>
                 <Router />
               </WouterRouter>

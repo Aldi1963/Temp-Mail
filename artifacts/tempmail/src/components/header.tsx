@@ -50,7 +50,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
 
   return (
     <header className="app-header border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-50">
-      <div className="flex h-16 sm:h-14 items-center justify-between px-4 md:px-6 max-w-screen-2xl mx-auto">
+      <div className="flex h-14 items-center justify-between px-4 md:px-6 max-w-screen-2xl mx-auto">
         {/* Brand */}
         <Link href="/">
           <div className="flex items-center gap-2.5 cursor-pointer select-none group">
