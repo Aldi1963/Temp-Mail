@@ -1,17 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ArrowLeft } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
-import { usePin } from "@/hooks/use-pin";
-import { PinLock } from "@/components/pin-lock";
-import { useSound } from "@/hooks/use-sound";
 import { useToast } from "@/hooks/use-toast";
-import LoginPage from "@/pages/login";
-import RegisterPage from "@/pages/register";
 import ApiDocsPage from "@/pages/api-docs";
 import StatusPage from "@/pages/status";
 import LandingPage from "@/pages/landing";
 import PrivacyPage from "@/pages/privacy";
 import { useNativeMailbox } from "./useNativeMailbox";
+import { useNativeSettings } from "./settings";
+import { NativeAuthProvider, useNativeAuth } from "./useNativeAuth";
+import { NativeLogin } from "./NativeLogin";
+import { PinGate } from "./PinGate";
 import { TabBar } from "./TabBar";
 import type { NativeTab } from "./TabBar";
 import { BerandaTab } from "./BerandaTab";
@@ -19,11 +17,9 @@ import { AlamatTab } from "./AlamatTab";
 import { LainnyaTab } from "./LainnyaTab";
 import { MessagePage } from "./MessagePage";
 
-export type NativePage = "login" | "register" | "api-docs" | "status" | "tentang" | "privacy";
+export type NativePage = "api-docs" | "status" | "tentang" | "privacy";
 
 const PAGE_TITLES: Record<NativePage, string> = {
-  login: "Masuk",
-  register: "Daftar",
   "api-docs": "Dokumentasi API",
   status: "Status Server",
   tentang: "Tentang",
@@ -60,55 +56,44 @@ function SubPage({
 
 // Pengalaman khusus aplikasi Android: bottom nav + layar penuh, tanpa popup.
 export function NativeApp() {
-  const { user } = useAuth();
-  const pin = usePin();
-  const mailbox = useNativeMailbox(pin.isUnlocked);
+  return (
+    <NativeAuthProvider>
+      <NativeAppInner />
+    </NativeAuthProvider>
+  );
+}
+
+function NativeAppInner() {
+  const { user } = useNativeAuth();
+  const { settings } = useNativeSettings();
+  const [unlocked, setUnlocked] = useState(!settings.pinEnabled);
+  const mailbox = useNativeMailbox(unlocked);
   const [tab, setTab] = useState<NativeTab>("beranda");
   const [page, setPage] = useState<NativePage | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
   const { toast } = useToast();
-  const { playChime } = useSound();
-  const prevTotal = useRef(0);
-
-  const total = mailbox.inbox?.total ?? 0;
-
-  // Pesan baru: bunyi + getar + toast
-  useEffect(() => {
-    if (total > prevTotal.current) {
-      if (prevTotal.current > 0) {
-        playChime();
-        try {
-          if ("vibrate" in navigator) navigator.vibrate([80, 40, 80]);
-        } catch {
-          /* abaikan */
-        }
-        toast({ title: "Email baru masuk", description: "Ada pesan baru di kotak masuk." });
-      }
-      prevTotal.current = total;
-    } else if (total < prevTotal.current) {
-      prevTotal.current = total;
-    }
-  }, [total, playChime, toast]);
+  const loginToastShown = useRef(false);
 
   useEffect(() => {
     setMessageId(null);
-    prevTotal.current = 0;
   }, [mailbox.activeEmail]);
 
-  // Selesai login → kembali ke tab
+  // Selesai login native → toast sekali lalu kembali ke tab Lainnya.
   useEffect(() => {
-    if ((page === "login" || page === "register") && user?.email) {
-      setPage(null);
+    if (!loginOpen && user?.email && !loginToastShown.current) {
+      loginToastShown.current = true;
       setTab("lainnya");
       toast({ title: "Masuk berhasil", description: user.email });
     }
-  }, [page, user, toast]);
+    if (!user?.email) loginToastShown.current = false;
+  }, [loginOpen, user, toast]);
 
   const openPage = useCallback((p: NativePage) => setPage(p), []);
   const closePage = useCallback(() => setPage(null), []);
 
-  if (pin.hasPin && !pin.isUnlocked) {
-    return <PinLock onVerify={pin.verifyPin} />;
+  if (settings.pinEnabled && !unlocked) {
+    return <PinGate onUnlock={() => setUnlocked(true)} />;
   }
 
   return (
@@ -127,14 +112,14 @@ export function NativeApp() {
               />
             )}
             {tab === "alamat" && <AlamatTab mailbox={mailbox} />}
-            {tab === "lainnya" && <LainnyaTab onOpenPage={openPage} />}
+            {tab === "lainnya" && (
+              <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} />
+            )}
           </div>
           <TabBar tab={tab} onChange={setTab} unread={mailbox.unreadCount} />
         </>
       ) : (
         <SubPage title={PAGE_TITLES[page]} onBack={closePage}>
-          {page === "login" && <LoginPage />}
-          {page === "register" && <RegisterPage />}
           {page === "api-docs" && <ApiDocsPage />}
           {page === "status" && <StatusPage />}
           {page === "tentang" && <LandingPage />}
@@ -144,6 +129,12 @@ export function NativeApp() {
 
       {messageId && mailbox.activeEmail && (
         <MessagePage messageId={messageId} email={mailbox.activeEmail} onBack={() => setMessageId(null)} />
+      )}
+
+      {loginOpen && (
+        <div className="fixed inset-0 z-[90] bg-background">
+          <NativeLogin onDone={() => setLoginOpen(false)} />
+        </div>
       )}
     </div>
   );
