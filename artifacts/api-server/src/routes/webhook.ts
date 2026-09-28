@@ -74,18 +74,33 @@ function parseMimeContent(raw: string): { text: string; html: string | null } {
     return decodeQp(body.trim());
   }
 
+  // A part is a container (not a leaf) when its own headers declare multipart.
+  // Container chunks (e.g. multipart/alternative inside multipart/related)
+  // contain the inner Content-Type lines, so they must be skipped — otherwise
+  // the text and html bodies get mixed into one blob.
+  function isLeafPart(partStr: string): boolean {
+    const rn = partStr.indexOf("\r\n\r\n");
+    const n = partStr.indexOf("\n\n");
+    const end = rn !== -1 ? rn : n !== -1 ? n : partStr.length;
+    return !/content-type:\s*multipart\//i.test(partStr.slice(0, end));
+  }
+
   if (boundaries.length > 0) {
-    for (const b of boundaries) {
-      const escaped = b.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+    // Innermost boundary first (last found = deepest nesting): the real leaf
+    // text/plain and text/html parts win over container chunks.
+    for (let i = boundaries.length - 1; i >= 0; i--) {
+      const b = boundaries[i];
+      const escaped = b.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
       const parts = raw.split(new RegExp(`--${escaped}(?:--)?`));
       for (const part of parts) {
-        if (part.includes("Content-Type: text/plain") && !extractedText) {
+        if (part.includes("Content-Type: text/plain") && !extractedText && isLeafPart(part)) {
           extractedText = cleanPart(part);
         }
-        if (part.includes("Content-Type: text/html") && !extractedHtml) {
+        if (part.includes("Content-Type: text/html") && !extractedHtml && isLeafPart(part)) {
           extractedHtml = cleanPart(part);
         }
       }
+      if (extractedText && extractedHtml) break;
     }
   }
 
