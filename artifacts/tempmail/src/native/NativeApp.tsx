@@ -7,6 +7,7 @@ import { useNativeMailbox } from "./useNativeMailbox";
 import { useNativeSettings } from "./settings";
 import { NativeAuthProvider, useNativeAuth } from "./useNativeAuth";
 import { NativeLogin } from "./NativeLogin";
+import { NativeAccountPage } from "./NativeAccountPage";
 import { PinGate } from "./PinGate";
 import { TabBar } from "./TabBar";
 import type { NativeTab } from "./TabBar";
@@ -83,6 +84,7 @@ function NativeAppInner() {
   const [page, setPage] = useState<NativePage | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const { toast } = useToast();
   const loginToastShown = useRef(false);
   const mailboxRef = useRef(mailbox);
@@ -136,7 +138,7 @@ function NativeAppInner() {
   const closePage = useCallback(() => setPage(null), []);
 
   // Kunci scroll dokumen saat overlay fullscreen terbuka.
-  const overlayOpen = !!messageId || loginOpen;
+  const overlayOpen = !!messageId || loginOpen || accountOpen;
   useEffect(() => {
     if (!overlayOpen) return;
     const prev = document.body.style.overflow;
@@ -161,6 +163,10 @@ function NativeAppInner() {
         setLoginOpen(false);
         return;
       }
+      if (accountOpen) {
+        setAccountOpen(false);
+        return;
+      }
       if (page) {
         setPage(null);
         return;
@@ -182,7 +188,7 @@ function NativeAppInner() {
     return () => {
       handle?.remove();
     };
-  }, [messageId, loginOpen, page, tab, toast]);
+  }, [messageId, loginOpen, accountOpen, page, tab, toast]);
 
   if (settings.pinEnabled && !unlocked) {
     return <PinGate onUnlock={() => setUnlocked(true)} />;
@@ -197,7 +203,7 @@ function NativeAppInner() {
               <BerandaTab
                 mailbox={mailbox}
                 onSelectMessage={setMessageId}
-                onOpenAccount={() => setTab("lainnya")}
+                onOpenAccount={() => (user?.email ? setAccountOpen(true) : setLoginOpen(true))}
                 onOpenAddresses={() => setTab("alamat")}
                 onOpenPin={() => {
                   setPinFlash((k) => k + 1);
@@ -229,6 +235,18 @@ function NativeAppInner() {
       {loginOpen && (
         <div className="fixed inset-0 z-[90] bg-background flex flex-col">
           <NativeLogin onDone={() => setLoginOpen(false)} />
+        </div>
+      )}
+
+      {accountOpen && (
+        <div className="fixed inset-0 z-[90] bg-background flex flex-col">
+          <NativeAccountPage
+            onBack={() => setAccountOpen(false)}
+            onSwitchAccount={() => {
+              setAccountOpen(false);
+              setLoginOpen(true);
+            }}
+          />
         </div>
       )}
     </div>
