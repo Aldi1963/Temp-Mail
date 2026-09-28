@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Bell, BellOff, Check, Copy, Flame, Plus, QrCode, Star, Trash2, X } from "lucide-react";
+import { Bell, BellOff, Check, Copy, Flame, Plus, QrCode, Share2, Star, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { Share } from "@capacitor/share";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { buzz, timeAgo, timeUntil } from "./otp";
 import { useNativeSettings } from "./settings";
 import { nativeFetch, manageHeaders } from "./api";
+import { copyText } from "./clipboard";
 import type { NativeMailbox } from "./useNativeMailbox";
 import { CustomAddressForm } from "./CustomAddressForm";
 
@@ -61,6 +63,7 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [serverLabels, setServerLabels] = useState<Record<string, string>>({});
   const [expiryMap, setExpiryMap] = useState<Record<string, string>>({});
   const [customOpen, setCustomOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Muat label + masa kedaluwarsa dari server sekali bila sudah login
   // (fallback bila label lokal kosong). expiryMap juga diperbarui lokal
@@ -200,6 +203,46 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
     }
   };
 
+  // Ekspor/backup semua alamat ke JSON, dibagikan lewat share sheet native.
+  // Fallback: salin JSON ke clipboard bila Share tidak tersedia/gagal.
+  const exportAddresses = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        addresses: sorted.map((e) => ({
+          email: e.email,
+          label: labelFor(e.email) || null,
+          createdAt: e.addedAt,
+        })),
+      };
+      const json = JSON.stringify(payload, null, 2);
+      try {
+        await Share.share({
+          title: "Backup alamat TempMail",
+          text: json,
+          dialogTitle: "Ekspor alamat",
+        });
+        toast({ title: "Alamat diekspor" });
+      } catch {
+        const ok = await copyText(json);
+        if (ok) {
+          toast({ title: "JSON tersalin", description: "Share tidak tersedia, JSON disalin ke clipboard." });
+        } else {
+          toast({
+            title: "Gagal mengekspor",
+            description: "Share dan clipboard tidak tersedia.",
+            variant: "destructive",
+          });
+        }
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <div
@@ -208,6 +251,15 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
       >
         <div className="flex items-center gap-1 pl-2 pr-1 h-14">
           <span className="text-[17px] font-extrabold tracking-tight flex-1 ml-2">Alamat Saya</span>
+          <button
+            type="button"
+            aria-label="Ekspor alamat"
+            onClick={exportAddresses}
+            disabled={exporting || sorted.length === 0}
+            className="w-10 h-10 rounded-full flex items-center justify-center mr-1 text-muted-foreground active:scale-95 disabled:opacity-50"
+          >
+            <Share2 className="h-5 w-5" />
+          </button>
           <button
             type="button"
             aria-label="Buat alamat baru"
