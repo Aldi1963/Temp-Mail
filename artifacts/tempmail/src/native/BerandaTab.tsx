@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCheck, Copy, Dices, LogIn, Mail, Moon, RefreshCw, Sun } from "lucide-react";
+import { CheckCheck, ChevronDown, Copy, Dices, LogIn, Mail, Moon, Plus, RefreshCw, Sun, X } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import type { NativeMailbox } from "./useNativeMailbox";
 import { NativeInboxList } from "./NativeInboxList";
 import type { NativeMsg } from "./NativeInboxList";
 import { OtpSection } from "./OtpSection";
+import { CustomAddressForm } from "./CustomAddressForm";
 
 interface Props {
   mailbox: NativeMailbox;
@@ -21,6 +22,7 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddr
   const { user } = useNativeAuth();
   const { toast } = useToast();
   const [justCopied, setJustCopied] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
   const dark = theme === "dark";
   const messages = (mailbox.inbox?.messages ?? []) as unknown as NativeMsg[];
 
@@ -113,16 +115,54 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddr
                   Kelola
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => setCustomOpen((o) => !o)}
+                className="w-full mt-2 inline-flex items-center justify-center gap-1 text-[12px] font-bold text-primary py-1.5 active:opacity-60"
+              >
+                {customOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", customOpen && "rotate-180")} />
+              </button>
+              {customOpen && (
+                <CustomAddressForm
+                  mailbox={mailbox}
+                  onDone={() => setCustomOpen(false)}
+                  className="mt-1 bg-background"
+                />
+              )}
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => mailbox.generateEmail()}
-              disabled={mailbox.isGenerating}
-              className="w-full rounded-2xl bg-primary text-primary-foreground text-[14px] font-extrabold py-3 active:scale-[0.99] disabled:opacity-60"
-            >
-              {mailbox.isGenerating ? "Membuat…" : "Buat alamat email"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => mailbox.generateEmail()}
+                disabled={mailbox.isGenerating}
+                className="w-full rounded-2xl bg-primary text-primary-foreground text-[14px] font-extrabold py-3 active:scale-[0.99] disabled:opacity-60"
+              >
+                {mailbox.isGenerating ? "Membuat…" : "Buat alamat email"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomOpen((o) => !o)}
+                className={cn(
+                  "w-full mt-2 rounded-2xl border border-dashed px-4 py-2.5 text-[13px] font-bold flex items-center justify-center gap-2 active:scale-[0.99]",
+                  customOpen
+                    ? "border-primary/60 text-primary bg-primary/[0.06]"
+                    : "border-primary/40 text-primary"
+                )}
+              >
+                {customOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
+              </button>
+              {customOpen && (
+                <CustomAddressForm
+                  mailbox={mailbox}
+                  onDone={() => setCustomOpen(false)}
+                  className="mt-2 bg-background"
+                />
+              )}
+            </>
           )}
         </div>
       </div>

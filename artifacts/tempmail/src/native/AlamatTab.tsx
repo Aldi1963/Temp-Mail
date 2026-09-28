@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Bell, BellOff, Check, Copy, Flame, Plus, QrCode, Star, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useGetAvailableDomains } from "@aldi1963/temp-mail-api-client";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { buzz, timeAgo } from "./otp";
 import { useNativeSettings } from "./settings";
 import { nativeFetch, manageHeaders } from "./api";
 import type { NativeMailbox } from "./useNativeMailbox";
+import { CustomAddressForm } from "./CustomAddressForm";
 
 function IconBtn({
   label,
@@ -56,15 +56,6 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [confirmDestroy, setConfirmDestroy] = useState<string | null>(null);
   const [serverLabels, setServerLabels] = useState<Record<string, string>>({});
   const [customOpen, setCustomOpen] = useState(false);
-  const [customName, setCustomName] = useState("");
-  const [customDomain, setCustomDomain] = useState("");
-
-  const { data: domainsData } = useGetAvailableDomains();
-  const domains: string[] = (domainsData?.domains as string[] | undefined) ?? [];
-
-  useEffect(() => {
-    if (!customDomain && domains.length > 0) setCustomDomain(domains[0]);
-  }, [domains, customDomain]);
 
   // Muat label dari server sekali bila sudah login (fallback bila label lokal kosong).
   useEffect(() => {
@@ -175,18 +166,6 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
     }
   };
 
-  const createCustom = () => {
-    const name = customName.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
-    if (!name) {
-      toast({ title: "Isi nama alamat dulu", variant: "destructive" });
-      return;
-    }
-    void generateEmail(customDomain || undefined, name).then(() => {
-      setCustomOpen(false);
-      setCustomName("");
-    });
-  };
-
   const copyAddr = async (email: string) => {
     try {
       await navigator.clipboard.writeText(email);
@@ -195,8 +174,6 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
       toast({ title: "Gagal menyalin", variant: "destructive" });
     }
   };
-
-  const customPreview = `${customName.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "") || "nama-kamu"}@${customDomain || domains[0] || "…"}`;
 
   return (
     <div>
@@ -232,52 +209,11 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
           {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
         </button>
         {customOpen && (
-          <div className="mt-2 rounded-2xl border border-border/70 bg-card p-3">
-            <div className="flex rounded-xl overflow-hidden border border-border bg-background">
-              <input
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="nama-kamu"
-                autoCapitalize="none"
-                autoCorrect="off"
-                maxLength={64}
-                className="flex-1 min-w-0 px-3 py-2.5 text-[14px] outline-none bg-transparent"
-              />
-              <span className="px-3 flex items-center text-[13px] text-muted-foreground bg-muted/50 truncate max-w-[45%]">
-                @{customDomain || domains[0] || "…"}
-              </span>
-            </div>
-            {domains.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {domains.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setCustomDomain(d)}
-                    className={cn(
-                      "rounded-full px-3 py-1.5 text-[12px] font-bold border active:scale-95",
-                      (customDomain || domains[0]) === d
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background text-muted-foreground border-border/70"
-                    )}
-                  >
-                    @{d}
-                  </button>
-                ))}
-              </div>
-            )}
-            <p className="text-[12px] text-muted-foreground mt-2.5">
-              Jadinya: <span className="font-bold text-foreground">{customPreview}</span>
-            </p>
-            <button
-              type="button"
-              onClick={createCustom}
-              disabled={isGenerating}
-              className="w-full mt-2 rounded-2xl bg-primary text-primary-foreground text-[13.5px] font-extrabold py-2.5 active:scale-[0.99] disabled:opacity-60"
-            >
-              {isGenerating ? "Membuat…" : "Buat alamat ini"}
-            </button>
-          </div>
+          <CustomAddressForm
+            mailbox={mailbox}
+            onDone={() => setCustomOpen(false)}
+            className="mt-2"
+          />
         )}
       </div>
 
