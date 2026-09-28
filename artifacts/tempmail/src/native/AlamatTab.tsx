@@ -45,7 +45,16 @@ interface ServerEmail {
   email: string;
   label?: string | null;
   expiresAt?: string | null;
+  autoDeleteDays?: number | null;
 }
+
+// Pilihan retensi hapus pesan otomatis per alamat (hari). null = mati.
+const RETENTION_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: "Mati" },
+  { value: 1, label: "1 hari" },
+  { value: 7, label: "7 hari" },
+  { value: 30, label: "30 hari" },
+];
 
 // Masa aktif alamat guest (tanpa akun): 30 hari sejak dibuat, seperti web.
 const GUEST_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -62,10 +71,13 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [confirmDestroy, setConfirmDestroy] = useState<string | null>(null);
   const [serverLabels, setServerLabels] = useState<Record<string, string>>({});
   const [expiryMap, setExpiryMap] = useState<Record<string, string>>({});
+  // Nilai retensi tersimpan per alamat (null = mati), dari GET /api/user/emails.
+  const [retentionMap, setRetentionMap] = useState<Record<string, number | null>>({});
+  const [retentionBusy, setRetentionBusy] = useState<string | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Muat label + masa kedaluwarsa dari server sekali bila sudah login
+  // Muat label + masa kedaluwarsa + retensi dari server sekali bila sudah login
   // (fallback bila label lokal kosong). expiryMap juga diperbarui lokal
   // setiap kali perpanjangan berhasil.
   useEffect(() => {
@@ -76,12 +88,15 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
         if (cancelled) return;
         const labels: Record<string, string> = {};
         const expiries: Record<string, string> = {};
+        const retentions: Record<string, number | null> = {};
         for (const e of d?.emails ?? []) {
           if (e?.email && e.label) labels[e.email] = e.label;
           if (e?.email && e.expiresAt) expiries[e.email] = e.expiresAt;
+          if (e?.email) retentions[e.email] = e.autoDeleteDays ?? null;
         }
         setServerLabels(labels);
         setExpiryMap((prev) => ({ ...expiries, ...prev }));
+        setRetentionMap(retentions);
       })
       .catch(() => {});
     return () => {
@@ -167,6 +182,34 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
       });
     } finally {
       setExtending(null);
+    }
+  };
+
+  // Atur retensi hapus pesan otomatis per alamat (hanya untuk akun login).
+  const setRetention = async (email: string, days: number | null) => {
+    if (retentionBusy) return;
+    setRetentionBusy(email);
+    try {
+      const data = await nativeFetch<{ autoDeleteDays?: number | null }>(
+        "/api/user/emails/retention",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ email, autoDeleteDays: days }),
+        }
+      );
+      setRetentionMap((prev) => ({ ...prev, [email]: data?.autoDeleteDays ?? null }));
+      toast({
+        title: days ? `Hapus otomatis: tiap ${days} hari` : "Hapus otomatis dimatikan",
+        description: email,
+      });
+    } catch (e) {
+      toast({
+        title: "Gagal mengubah retensi",
+        description: e instanceof Error ? e.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    } finally {
+      setRetentionBusy(null);
     }
   };
 
@@ -311,6 +354,7 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
           const armed = confirmDestroy === e.email;
           const remaining = timeUntil(expiresAtFor(e.email, e.addedAt));
           const expired = remaining === "kedaluwarsa";
+          const retention = retentionMap[e.email] ?? null;
           return (
             <div
               key={e.email}
@@ -350,6 +394,11 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
                           )}
                         >
                           {" "}· tersisa {remaining}
+                        </span>
+                      )}
+                      {retention && (
+                        <span className="font-bold text-amber-600 dark:text-amber-400">
+                          {" "}· hapus otomatis {retention} hari
                         </span>
                       )}
                     </span>
@@ -422,6 +471,33 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
                   {extending === e.email ? "…" : "Perpanjang"}
                 </button>
               </div>
+
+              {/* Kontrol retensi hapus pesan otomatis (hanya untuk akun login) */}
+              {user && (
+                <div className="flex items-center gap-1.5 pl-[42px] pr-3 pb-2.5 -mt-1 flex-wrap">
+                  <span className="text-[11px] text-muted-foreground mr-0.5">Hapus otomatis:</span>
+                  {RETENTION_OPTIONS.map((opt) => {
+                    const selected = retention === opt.value;
+                    const busy = retentionBusy === e.email;
+                    return (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setRetention(e.email, opt.value)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] font-bold active:scale-95 disabled:opacity-50",
+                          selected
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "border-border/70 text-muted-foreground"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {qrOpen === e.email && (
                 <div className="border-t border-border/60 p-4 flex flex-col items-center gap-3">
