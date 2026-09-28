@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Bell, BellOff, Check, Copy, Plus, QrCode, Star, Trash2 } from "lucide-react";
+import { Bell, BellOff, Check, Copy, Flame, Plus, QrCode, Star, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { useGetAvailableDomains } from "@aldi1963/temp-mail-api-client";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { buzz, timeAgo } from "./otp";
@@ -13,21 +14,24 @@ function IconBtn({
   label,
   onClick,
   active,
+  danger,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
+  danger?: boolean;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
+      title={label}
       onClick={onClick}
       className={cn(
         "w-8 h-8 rounded-full flex items-center justify-center shrink-0 active:bg-muted",
-        active ? "text-primary" : "text-muted-foreground"
+        danger ? "text-destructive" : active ? "text-primary" : "text-muted-foreground"
       )}
     >
       {children}
@@ -49,7 +53,18 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
   const [extending, setExtending] = useState<string | null>(null);
+  const [confirmDestroy, setConfirmDestroy] = useState<string | null>(null);
   const [serverLabels, setServerLabels] = useState<Record<string, string>>({});
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customDomain, setCustomDomain] = useState("");
+
+  const { data: domainsData } = useGetAvailableDomains();
+  const domains: string[] = (domainsData?.domains as string[] | undefined) ?? [];
+
+  useEffect(() => {
+    if (!customDomain && domains.length > 0) setCustomDomain(domains[0]);
+  }, [domains, customDomain]);
 
   // Muat label dari server sekali bila sudah login (fallback bila label lokal kosong).
   useEffect(() => {
@@ -136,6 +151,42 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
     }
   };
 
+  // Musnahkan alamat permanen di server (two-tap confirm, tanpa popup).
+  const destroy = async (email: string) => {
+    if (confirmDestroy !== email) {
+      setConfirmDestroy(email);
+      window.setTimeout(() => setConfirmDestroy((c) => (c === email ? null : c)), 4000);
+      return;
+    }
+    setConfirmDestroy(null);
+    try {
+      await nativeFetch(`/api/email/destroy?email=${encodeURIComponent(email)}`, {
+        method: "DELETE",
+        headers: manageHeaders(email),
+      });
+      removeFromList(email);
+      toast({ title: "Alamat dimusnahkan permanen" });
+    } catch (e) {
+      toast({
+        title: "Gagal memusnahkan",
+        description: e instanceof Error ? e.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const createCustom = () => {
+    const name = customName.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+    if (!name) {
+      toast({ title: "Isi nama alamat dulu", variant: "destructive" });
+      return;
+    }
+    void generateEmail(customDomain || undefined, name).then(() => {
+      setCustomOpen(false);
+      setCustomName("");
+    });
+  };
+
   const copyAddr = async (email: string) => {
     try {
       await navigator.clipboard.writeText(email);
@@ -145,9 +196,14 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
     }
   };
 
+  const customPreview = `${customName.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "") || "nama-kamu"}@${customDomain || domains[0] || "…"}`;
+
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60">
+    <div>
+      <div
+        className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="flex items-center gap-1 pl-2 pr-1 h-14">
           <span className="text-[17px] font-extrabold tracking-tight flex-1 ml-2">Alamat Saya</span>
           <button
@@ -160,6 +216,69 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
             <Plus className="h-5 w-5" />
           </button>
         </div>
+      </div>
+
+      {/* Form alamat kustom inline */}
+      <div className="px-3 pt-3">
+        <button
+          type="button"
+          onClick={() => setCustomOpen((o) => !o)}
+          className={cn(
+            "w-full rounded-2xl border border-dashed px-4 py-3 text-[13px] font-bold flex items-center justify-center gap-2 active:scale-[0.99]",
+            customOpen ? "border-primary/60 text-primary bg-primary/[0.06]" : "border-primary/40 text-primary"
+          )}
+        >
+          {customOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
+        </button>
+        {customOpen && (
+          <div className="mt-2 rounded-2xl border border-border/70 bg-card p-3">
+            <div className="flex rounded-xl overflow-hidden border border-border bg-background">
+              <input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="nama-kamu"
+                autoCapitalize="none"
+                autoCorrect="off"
+                maxLength={64}
+                className="flex-1 min-w-0 px-3 py-2.5 text-[14px] outline-none bg-transparent"
+              />
+              <span className="px-3 flex items-center text-[13px] text-muted-foreground bg-muted/50 truncate max-w-[45%]">
+                @{customDomain || domains[0] || "…"}
+              </span>
+            </div>
+            {domains.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {domains.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setCustomDomain(d)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-[12px] font-bold border active:scale-95",
+                      (customDomain || domains[0]) === d
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border/70"
+                    )}
+                  >
+                    @{d}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-[12px] text-muted-foreground mt-2.5">
+              Jadinya: <span className="font-bold text-foreground">{customPreview}</span>
+            </p>
+            <button
+              type="button"
+              onClick={createCustom}
+              disabled={isGenerating}
+              className="w-full mt-2 rounded-2xl bg-primary text-primary-foreground text-[13.5px] font-extrabold py-2.5 active:scale-[0.99] disabled:opacity-60"
+            >
+              {isGenerating ? "Membuat…" : "Buat alamat ini"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="p-3 space-y-2">
@@ -176,6 +295,7 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
           const fav = settings.favorites.includes(e.email);
           const muted = settings.notifyOff.includes(e.email);
           const label = labelFor(e.email);
+          const armed = confirmDestroy === e.email;
           return (
             <div
               key={e.email}
@@ -223,10 +343,23 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
                 >
                   <QrCode className="h-4 w-4" />
                 </IconBtn>
-                <IconBtn label={`Hapus ${e.email}`} onClick={() => removeFromList(e.email)}>
+                <IconBtn
+                  label={armed ? "Ketuk lagi untuk musnahkan" : "Musnahkan alamat"}
+                  onClick={() => destroy(e.email)}
+                  danger={armed}
+                >
+                  <Flame className="h-4 w-4" />
+                </IconBtn>
+                <IconBtn label={`Hapus ${e.email} dari daftar`} onClick={() => removeFromList(e.email)}>
                   <Trash2 className="h-4 w-4" />
                 </IconBtn>
               </div>
+
+              {armed && (
+                <p className="px-4 pb-1 text-[11px] font-bold text-destructive">
+                  Ketuk ikon api sekali lagi untuk memusnahkan alamat ini permanen.
+                </p>
+              )}
 
               <div className="flex items-center gap-2 pl-[42px] pr-3 pb-2.5 -mt-1">
                 {editingLabel === e.email ? (
@@ -288,7 +421,7 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
       <p className="text-[11px] text-muted-foreground text-center px-8 pb-6">
         Ketuk alamat untuk mengaktifkannya.
         <br />
-        Ikon sampah menghapus alamat dari daftar.
+        Ikon api memusnahkan alamat permanen, ikon sampah hanya menghapus dari daftar.
       </p>
     </div>
   );
