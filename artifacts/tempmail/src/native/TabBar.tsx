@@ -1,18 +1,22 @@
-import { Home, Mail, MoreHorizontal } from "lucide-react";
+import { Home, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type NativeTab = "beranda" | "alamat" | "lainnya";
+export type NativeTab = "beranda" | "alamat" | "lainnya" | "admin";
 
 interface Props {
   tab: NativeTab;
   onChange: (t: NativeTab) => void;
   unread: number;
+  showAdmin: boolean;
 }
 
-export function TabBar({ tab, onChange, unread }: Props) {
+export function TabBar({ tab, onChange, unread, showAdmin }: Props) {
   const items = [
     { id: "beranda" as const, label: "Beranda", icon: Home, badge: unread },
     { id: "alamat" as const, label: "Alamat Saya", icon: Mail, badge: 0 },
+    ...(showAdmin
+      ? [{ id: "admin" as const, label: "Admin", icon: ShieldCheck, badge: 0 }]
+      : []),
     { id: "lainnya" as const, label: "Lainnya", icon: MoreHorizontal, badge: 0 },
   ];
   return (

@@ -14,6 +14,7 @@ import type { NativeTab } from "./TabBar";
 import { BerandaTab } from "./BerandaTab";
 import { AlamatTab } from "./AlamatTab";
 import { LainnyaTab } from "./LainnyaTab";
+import { AdminTab } from "./AdminTab";
 import { MessagePage } from "./MessagePage";
 import { NativeApiDocsPage } from "./NativeApiDocsPage";
 import { NativeStatusPage } from "./NativeStatusPage";
@@ -76,6 +77,7 @@ export function NativeApp() {
 
 function NativeAppInner() {
   const { user } = useNativeAuth();
+  const isAdmin = user?.role === "admin";
   const { settings } = useNativeSettings();
   const [unlocked, setUnlocked] = useState(!settings.pinEnabled);
   const mailbox = useNativeMailbox(unlocked);
@@ -133,6 +135,12 @@ function NativeAppInner() {
     }
     if (!user?.email) loginToastShown.current = false;
   }, [loginOpen, user, toast]);
+
+  // Tab admin hanya untuk admin: bila peran berubah (mis. logout),
+  // kembalikan ke beranda agar layar admin tak bisa diintip.
+  useEffect(() => {
+    if (!isAdmin && tab === "admin") setTab("beranda");
+  }, [isAdmin, tab]);
 
   const openPage = useCallback((p: NativePage) => setPage(p), []);
   const closePage = useCallback(() => setPage(null), []);
@@ -215,6 +223,7 @@ function NativeAppInner() {
             {tab === "lainnya" && (
               <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} pinFlash={pinFlash} />
             )}
+            {tab === "admin" && isAdmin && <AdminTab />}
           </>
         ) : (
           <SubPage title={PAGE_TITLES[page]} onBack={closePage}>
@@ -226,7 +235,7 @@ function NativeAppInner() {
           </SubPage>
         )}
       </div>
-      {page === null && <TabBar tab={tab} onChange={setTab} unread={mailbox.unreadCount} />}
+      {page === null && <TabBar tab={tab} onChange={setTab} unread={mailbox.unreadCount} showAdmin={isAdmin} />}
 
       {messageId && mailbox.activeEmail && (
         <MessagePage messageId={messageId} email={mailbox.activeEmail} onBack={() => setMessageId(null)} />
