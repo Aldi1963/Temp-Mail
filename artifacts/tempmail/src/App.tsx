@@ -21,6 +21,7 @@ import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import { ROUTER_BASE } from "./lib/api-base";
+import { NativeApp } from "./native/NativeApp";
 import { Capacitor } from "@capacitor/core";
 
 // Error Boundary to catch any render errors and prevent white blank screens
@@ -122,6 +123,14 @@ function ProtectedRoute({ component: Component, adminOnly }: { component: React.
 }
 
 function Router() {
+  // Aplikasi Android: UI native khusus (bottom nav, layar penuh, tanpa popup).
+  // Tambahkan ?native=1 pada URL web untuk pratinjau UI native di browser.
+  const forceNative =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("native") === "1";
+  if (Capacitor.isNativePlatform() || forceNative) {
+    return <NativeApp />;
+  }
   return (
     <Switch>
       <Route path="/" component={Home} />
