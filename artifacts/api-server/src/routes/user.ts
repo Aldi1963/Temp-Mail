@@ -7,6 +7,88 @@ import { requireAuth, requireAuthOrApiKey } from "../lib/auth.js";
 
 const router = Router();
 
+// ---------------------------------------------------------------------------
+// PATCH /emails/label — sengaja didaftarkan SEBELUM requireAuthOrApiKey agar
+// tamu (guest, tanpa login) juga bisa mengatur label alamatnya dengan bukti
+// kepemilikan X-Manage-Token (pola yang sama dengan routes/email.ts).
+// Penegakan auth dilakukan manual di dalam handler:
+//   1. user login (session/API key) yang memiliki alamat -> diizinkan
+//      (perilaku lama, tidak berubah);
+//   2. guest dengan X-Manage-Token (atau ?manageToken=) yang valid -> diizinkan;
+//   3. alamat guest legacy (tanpa manageTokenHash & tanpa userId) -> diizinkan,
+//      sama seperti checkAddressOwnership di routes/email.ts.
+// ---------------------------------------------------------------------------
+
+/** Ambil manage token dari header X-Manage-Token atau query ?manageToken=. */
+function readManageToken(req: { headers: Record<string, unknown>; query: Record<string, unknown> }): string {
+  const h = req.headers["x-manage-token"];
+  const fromHeader = typeof h === "string" ? h : "";
+  const q = req.query.manageToken;
+  const fromQuery = typeof q === "string" ? q : "";
+  return (fromHeader || fromQuery || "").trim();
+}
+
+/** Cocokkan manage token dengan hash SHA-256 yang tersimpan (timing-safe). */
+function manageTokenMatches(provided: string, storedHash: string): boolean {
+  const a = Buffer.from(createHash("sha256").update(provided, "utf8").digest("hex"), "utf8");
+  const b = Buffer.from(storedHash, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+router.patch("/emails/label", async (req, res) => {
+  const userId = req.session?.userId ?? req.apiKeyUserId;
+  const { email, label } = req.body ?? {};
+  if (!email || typeof email !== "string") {
+    res.status(400).json({ error: "Bad request", message: "email wajib diisi." });
+    return;
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanLabel = typeof label === "string" ? label.trim().slice(0, 40) : "";
+  const rows = await db
+    .select()
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.email, cleanEmail))
+    .limit(1);
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Alamat tidak ditemukan." });
+    return;
+  }
+  const addr = rows[0];
+
+  // 1. Pemilik yang login — perilaku lama, tidak berubah.
+  const isOwner = !!userId && addr.userId === userId;
+  // 2. Guest dengan manage token yang valid.
+  const providedToken = readManageToken(req);
+  const tokenOk =
+    !!providedToken &&
+    !!addr.manageTokenHash &&
+    manageTokenMatches(providedToken, addr.manageTokenHash);
+  // 3. Alamat guest legacy (dibuat sebelum fitur token, tanpa pemilik).
+  const legacyGuest = !addr.manageTokenHash && !addr.userId;
+
+  if (!isOwner && !tokenOk && !legacyGuest) {
+    if (userId) {
+      res.status(403).json({ error: "Forbidden", message: "Alamat ini bukan milik akun Anda." });
+      return;
+    }
+    if (providedToken) {
+      res.status(403).json({ error: "Forbidden", message: "Bukti kepemilikan tidak valid." });
+      return;
+    }
+    res.status(401).json({
+      error: "Unauthorized",
+      message: "Silakan login, sertakan X-API-Key, atau X-Manage-Token.",
+    });
+    return;
+  }
+
+  await db
+    .update(emailAddressesTable)
+    .set({ label: cleanLabel || null })
+    .where(eq(emailAddressesTable.email, cleanEmail));
+  res.json({ email: cleanEmail, label: cleanLabel || null });
+});
+
 router.use(requireAuthOrApiKey);
 
 router.get("/emails", async (req, res) => {
@@ -225,35 +307,6 @@ router.patch("/emails/retention", async (req, res) => {
     .set({ autoDeleteDays: days })
     .where(eq(emailAddressesTable.email, cleanEmail));
   res.json({ email: cleanEmail, autoDeleteDays: days });
-});
-
-router.patch("/emails/label", async (req, res) => {
-  const userId = req.session.userId ?? req.apiKeyUserId!;
-  const { email, label } = req.body ?? {};
-  if (!email || typeof email !== "string") {
-    res.status(400).json({ error: "Bad request", message: "email wajib diisi." });
-    return;
-  }
-  const cleanEmail = email.trim().toLowerCase();
-  const cleanLabel = typeof label === "string" ? label.trim().slice(0, 40) : "";
-  const rows = await db
-    .select()
-    .from(emailAddressesTable)
-    .where(eq(emailAddressesTable.email, cleanEmail))
-    .limit(1);
-  if (rows.length === 0) {
-    res.status(404).json({ error: "Not found", message: "Alamat tidak ditemukan." });
-    return;
-  }
-  if (rows[0].userId !== userId) {
-    res.status(403).json({ error: "Forbidden", message: "Alamat ini bukan milik akun Anda." });
-    return;
-  }
-  await db
-    .update(emailAddressesTable)
-    .set({ label: cleanLabel || null })
-    .where(eq(emailAddressesTable.email, cleanEmail));
-  res.json({ email: cleanEmail, label: cleanLabel || null });
 });
 
 export { router as userRouter };
