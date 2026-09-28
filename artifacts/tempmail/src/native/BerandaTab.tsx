@@ -368,31 +368,61 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
             </>
           ) : (
             <>
-              <div className="text-[10px] font-bold tracking-[1.5px] text-primary px-1 pt-1">
-                ALAMAT EMAIL
+              {/* Bar alamat: placeholder saat kosong */}
+              <div className="flex items-stretch rounded-2xl border border-primary/25 bg-background overflow-hidden">
+                <span className="pl-3 pr-1 flex items-center shrink-0">
+                  <Mail className="h-4 w-4 text-primary" />
+                </span>
+                <span className="flex-1 min-w-0 px-2 py-3 text-[15px] font-extrabold tracking-tight truncate text-muted-foreground/60">
+                  Belum ada alamat aktif
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => mailbox.generateEmail()}
-                disabled={mailbox.isGenerating}
-                className="w-full rounded-2xl bg-primary text-primary-foreground text-[14px] font-extrabold py-3 flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-60"
-              >
-                <Zap className={cn("h-4 w-4", mailbox.isGenerating && "animate-spin")} />
-                {mailbox.isGenerating ? "Membuat…" : "Buat alamat email"}
-              </button>
-              <button
-                type="button"
-                onClick={toggleCustom}
-                className={cn(
-                  "w-full rounded-2xl border-2 px-4 py-2.5 text-[13px] font-extrabold flex items-center justify-center gap-2 active:scale-[0.99]",
-                  customOpen
-                    ? "border-primary bg-primary/[0.08] text-primary"
-                    : "border-primary/50 text-primary"
-                )}
-              >
-                {customOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
-              </button>
+
+              {/* Baris tombol: sama seperti state aktif */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => mailbox.generateEmail()}
+                  disabled={mailbox.isGenerating}
+                  className="flex-[2] min-w-0 rounded-2xl bg-primary text-primary-foreground text-[13px] font-extrabold py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-60"
+                >
+                  <Zap className={cn("h-4 w-4", mailbox.isGenerating && "animate-spin")} />
+                  {mailbox.isGenerating ? "Membuat…" : "Acak Baru"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCustom}
+                  className={cn(
+                    "flex-[1.4] min-w-0 rounded-2xl border text-[13px] font-extrabold py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98]",
+                    customOpen
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border/70 bg-background text-foreground"
+                  )}
+                >
+                  {customOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                  Kustom
+                </button>
+                <button
+                  type="button"
+                  aria-label="Pengaturan kunci PIN"
+                  title="Pengaturan kunci PIN"
+                  onClick={onOpenPin}
+                  className="w-11 h-11 rounded-2xl border border-border/70 bg-background flex items-center justify-center active:scale-95 shrink-0"
+                >
+                  <KeyRound className="h-[18px] w-[18px]" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Tampilkan QR alamat"
+                  title="Tampilkan QR alamat"
+                  onClick={() => toast({ title: "Buat alamat dulu" })}
+                  className="w-11 h-11 rounded-2xl border border-border/70 bg-background flex items-center justify-center active:scale-95 shrink-0 text-foreground/30"
+                >
+                  <QrCode className="h-[18px] w-[18px]" />
+                </button>
+              </div>
+
+              {/* Panel inline kustom */}
               {customOpen && (
                 <CustomAddressForm
                   mailbox={mailbox}
@@ -400,6 +430,23 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
                   className="bg-background"
                 />
               )}
+
+              {/* Baris stats: tanpa ikon aksi saat kosong */}
+              <div className="flex items-center gap-2 px-1 pt-0.5">
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-muted-foreground min-w-0 flex-1">
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <Inbox className="h-3.5 w-3.5" />
+                    <b className="text-foreground">{total}</b> total
+                  </span>
+                  <span aria-hidden="true">•</span>
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <Mail className="h-3.5 w-3.5" />
+                    <b className="text-primary">{mailbox.unreadCount}</b> baru
+                  </span>
+                  <span aria-hidden="true">•</span>
+                  <span className="whitespace-nowrap">Aktif s/d —</span>
+                </div>
+              </div>
             </>
           )}
         </div>
