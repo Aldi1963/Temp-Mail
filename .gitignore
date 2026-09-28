@@ -48,3 +48,6 @@ Thumbs.db
 .cache/
 .local/
 .env
+
+# Build output khusus aplikasi Android (Capacitor)
+dist-native/

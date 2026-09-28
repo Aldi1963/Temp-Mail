@@ -38,6 +38,9 @@ const PRODUCTION_ORIGINS = [
   "http://mail.clipku.com",
   "https://m.clipku.com",
   "http://m.clipku.com",
+  // Aplikasi Android (Capacitor) berjalan di origin lokal ini
+  "https://localhost",
+  "capacitor://localhost",
 ];
 const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || "")
   .split(",")

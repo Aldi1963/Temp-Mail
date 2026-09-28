@@ -45,7 +45,7 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ("serviceWorker" in navigator) {
+      if ("serviceWorker" in navigator && !window.Capacitor) {
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("sw.js", { scope: "./" })
             .then(() => console.log("[SW] Registered"))
