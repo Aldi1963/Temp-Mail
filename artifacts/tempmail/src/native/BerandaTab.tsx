@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { CheckCheck, ChevronDown, Copy, Dices, LogIn, Mail, Moon, Plus, RefreshCw, Sun, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { CheckCheck, Copy, Dices, LogIn, Mail, Moon, Pencil, QrCode, RefreshCw, Sun, X } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { useTheme } from "@/components/theme-provider";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -17,12 +19,49 @@ interface Props {
   onOpenAddresses: () => void;
 }
 
-export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddresses }: Props) {
+function HeroBtn({
+  label,
+  onClick,
+  disabled,
+  active,
+  primary,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  primary?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex flex-col items-center justify-center gap-1 rounded-2xl py-2.5 text-[12px] font-bold active:scale-[0.97] disabled:opacity-50 min-w-0",
+        primary
+          ? "bg-primary text-primary-foreground"
+          : active
+            ? "bg-primary/15 text-primary border border-primary/40"
+            : "bg-background border border-border/70 text-foreground"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
   const { theme, setTheme } = useTheme();
   const { user } = useNativeAuth();
   const { toast } = useToast();
   const [justCopied, setJustCopied] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const dark = theme === "dark";
   const messages = (mailbox.inbox?.messages ?? []) as unknown as NativeMsg[];
 
@@ -36,6 +75,16 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddr
     } catch {
       toast({ title: "Gagal menyalin", variant: "destructive" });
     }
+  };
+
+  // Hanya satu panel yang terbuka dalam satu waktu.
+  const toggleCustom = () => {
+    setQrOpen(false);
+    setCustomOpen((o) => !o);
+  };
+  const toggleQr = () => {
+    setCustomOpen(false);
+    setQrOpen((o) => !o);
   };
 
   return (
@@ -91,45 +140,51 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddr
                   {justCopied ? "Disalin!" : "Ketuk untuk menyalin"}
                 </span>
               </button>
-              <div className="flex gap-2 mt-3">
-                <button
-                  type="button"
-                  onClick={copyEmail}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl bg-primary text-primary-foreground text-[13px] font-bold py-2.5 active:scale-[0.98]"
-                >
-                  <Copy className="h-4 w-4" /> Salin
-                </button>
-                <button
-                  type="button"
+              <div className="grid grid-cols-4 gap-2 mt-3">
+                <HeroBtn label="Salin alamat" primary onClick={copyEmail}>
+                  <Copy className="h-[18px] w-[18px]" />
+                  Salin
+                </HeroBtn>
+                <HeroBtn
+                  label="Buat alamat acak baru"
                   onClick={() => mailbox.generateEmail()}
                   disabled={mailbox.isGenerating}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl border border-primary/40 text-primary text-[13px] font-bold py-2.5 active:scale-[0.98] disabled:opacity-50"
                 >
-                  <Dices className="h-4 w-4" /> {mailbox.isGenerating ? "Membuat…" : "Alamat baru"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenAddresses}
-                  className="inline-flex items-center justify-center rounded-2xl bg-muted text-foreground text-[13px] font-bold px-4 py-2.5 active:scale-[0.98]"
-                >
-                  Kelola
-                </button>
+                  <Dices className="h-[18px] w-[18px]" />
+                  {mailbox.isGenerating ? "…" : "Acak"}
+                </HeroBtn>
+                <HeroBtn label="Buat alamat kustom" active={customOpen} onClick={toggleCustom}>
+                  {customOpen ? <X className="h-[18px] w-[18px]" /> : <Pencil className="h-[18px] w-[18px]" />}
+                  Kustom
+                </HeroBtn>
+                <HeroBtn label="Tampilkan QR alamat" active={qrOpen} onClick={toggleQr}>
+                  <QrCode className="h-[18px] w-[18px]" />
+                  QR
+                </HeroBtn>
               </div>
-              <button
-                type="button"
-                onClick={() => setCustomOpen((o) => !o)}
-                className="w-full mt-2 inline-flex items-center justify-center gap-1 text-[12px] font-bold text-primary py-1.5 active:opacity-60"
-              >
-                {customOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", customOpen && "rotate-180")} />
-              </button>
               {customOpen && (
                 <CustomAddressForm
                   mailbox={mailbox}
                   onDone={() => setCustomOpen(false)}
-                  className="mt-1 bg-background"
+                  className="mt-2 bg-background"
                 />
+              )}
+              {qrOpen && (
+                <div className="mt-2 rounded-2xl border border-border/70 bg-background p-4 flex flex-col items-center gap-3">
+                  <div className="bg-white p-3 rounded-2xl">
+                    <QRCodeSVG value={mailbox.activeEmail} size={160} />
+                  </div>
+                  <p className="text-[12px] font-mono break-all text-center px-2">
+                    {mailbox.activeEmail}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={copyEmail}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-bold bg-primary text-primary-foreground rounded-xl px-4 py-2 active:scale-95"
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Salin alamat
+                  </button>
+                </div>
               )}
             </>
           ) : (
@@ -144,15 +199,15 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenAddr
               </button>
               <button
                 type="button"
-                onClick={() => setCustomOpen((o) => !o)}
+                onClick={toggleCustom}
                 className={cn(
-                  "w-full mt-2 rounded-2xl border border-dashed px-4 py-2.5 text-[13px] font-bold flex items-center justify-center gap-2 active:scale-[0.99]",
+                  "w-full mt-2 rounded-2xl border-2 px-4 py-2.5 text-[13px] font-extrabold flex items-center justify-center gap-2 active:scale-[0.99]",
                   customOpen
-                    ? "border-primary/60 text-primary bg-primary/[0.06]"
-                    : "border-primary/40 text-primary"
+                    ? "border-primary bg-primary/[0.08] text-primary"
+                    : "border-primary/50 text-primary"
                 )}
               >
-                {customOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {customOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                 {customOpen ? "Tutup form kustom" : "Buat alamat kustom"}
               </button>
               {customOpen && (
