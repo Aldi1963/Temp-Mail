@@ -1,12 +1,17 @@
 // State mailbox untuk aplikasi native — logika sama seperti halaman Home web,
 // dikemas sebagai hook agar bisa dipakai tab Beranda/Alamat/Lainnya.
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth, userFetch } from "@/hooks/use-auth";
+import { useNativeAuth } from "./useNativeAuth";
+import { nativeFetch } from "./api";
+import { pushWidgetData } from "./widget";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useToast } from "@/hooks/use-toast";
+import { useSound } from "@/hooks/use-sound";
 import { saveManageToken } from "@/lib/manage-token";
 import { API_BASE_URL } from "@/lib/api-base";
+import { useNativeSettings } from "./settings";
+import { buzz, extractQuickOtp } from "./otp";
 import {
   useGetInbox,
   useMarkMessageRead,
@@ -41,8 +46,12 @@ export function useNativeMailbox(isUnlocked: boolean) {
   const [inboxList, setInboxList] = useLocalStorage<InboxEntry[]>("tempmail_inbox_list", []);
   const [serverEmails, setServerEmails] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const { user } = useAuth();
+  const { user } = useNativeAuth();
   const { toast } = useToast();
+  const { settings } = useNativeSettings();
+  const { playChime } = useSound();
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const seenEmailRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const markReadMutation = useMarkMessageRead();
 
@@ -80,7 +89,7 @@ export function useNativeMailbox(isUnlocked: boolean) {
       return;
     }
     let cancelled = false;
-    userFetch("/api/user/emails")
+    nativeFetch<{ emails?: { isExpired?: boolean; email: string }[] }>("/api/user/emails")
       .then((d) => {
         if (cancelled) return;
         const list = ((d?.emails || []) as { isExpired?: boolean; email: string }[])
@@ -121,7 +130,7 @@ export function useNativeMailbox(isUnlocked: boolean) {
       setInboxList((prev) => prev.filter((e) => e.email !== email));
       setServerEmails((prev) => prev.filter((e) => e !== email));
       if (ownedByServer) {
-        userFetch("/api/user/emails", {
+        nativeFetch("/api/user/emails", {
           method: "DELETE",
           body: JSON.stringify({ email }),
         }).catch(() => {
@@ -188,10 +197,67 @@ export function useNativeMailbox(isUnlocked: boolean) {
     }
   );
 
+  // Pesan baru: bunyi + getar + toast, plus salin OTP otomatis.
+  // Dilewati untuk alamat yang dimute di settings.notifyOff.
+  useEffect(() => {
+    if (!activeEmail || inboxLoading || !inbox) return;
+    const messages = inbox.messages as {
+      id: string;
+      subject?: string | null;
+      preview?: string | null;
+    }[];
+    const seen = seenIdsRef.current;
+    if (seenEmailRef.current !== activeEmail) {
+      // Baru membuka alamat: tandai semua pesan yang ada sebagai sudah dilihat, tanpa notifikasi.
+      seenEmailRef.current = activeEmail;
+      seen.clear();
+      for (const m of messages ?? []) if (m?.id) seen.add(m.id);
+      return;
+    }
+    const fresh: typeof messages = [];
+    for (const m of messages ?? []) {
+      if (m?.id && !seen.has(m.id)) {
+        seen.add(m.id);
+        fresh.push(m);
+      }
+    }
+    if (fresh.length === 0) return;
+    if (settings.notifyOff.includes(activeEmail)) return;
+
+    playChime();
+    buzz([80, 40, 80]);
+    toast({
+      title: "Email baru masuk",
+      description:
+        fresh.length === 1
+          ? "Ada pesan baru di kotak masuk."
+          : `${fresh.length} pesan baru di kotak masuk.`,
+    });
+
+    if (settings.autoCopyOtp) {
+      for (const m of fresh) {
+        const otp = extractQuickOtp(`${m.subject ?? ""} ${m.preview ?? ""}`);
+        if (!otp) continue;
+        try {
+          navigator.clipboard.writeText(otp).catch(() => {});
+        } catch {
+          /* abaikan */
+        }
+        toast({ title: `OTP ${otp} disalin` });
+        break;
+      }
+    }
+  }, [inbox, inboxLoading, activeEmail, settings, playChime, toast]);
+
   const unreadCount = useMemo(
     () => inbox?.messages?.filter((m) => !m.isRead).length ?? 0,
     [inbox]
   );
+
+  // Dorong data ke widget home-screen (Kotlin) bila berjalan di aplikasi native.
+  useEffect(() => {
+    if (activeEmail) void pushWidgetData(activeEmail, unreadCount);
+  }, [activeEmail, unreadCount]);
 
   const refreshInbox = useCallback(() => {
     if (!activeEmail) return;

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, Copy, Inbox } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Check, Copy, Inbox, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buzz, cleanSnippet, extractQuickOtp, senderMeta, timeAgo } from "./otp";
 
@@ -10,7 +10,17 @@ export interface NativeMsg {
   preview?: string | null;
   receivedAt: string;
   isRead?: boolean | null;
+  hasAttachments?: boolean | null;
 }
+
+type MsgFilter = "semua" | "unread" | "otp" | "attachment";
+
+const FILTERS: { key: MsgFilter; label: string }[] = [
+  { key: "semua", label: "Semua" },
+  { key: "unread", label: "Belum dibaca" },
+  { key: "otp", label: "OTP" },
+  { key: "attachment", label: "Lampiran" },
+];
 
 interface Props {
   messages: NativeMsg[];
@@ -20,6 +30,23 @@ interface Props {
 
 export function NativeInboxList({ messages, loading, onSelect }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<MsgFilter>("semua");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return messages.filter((m) => {
+      if (filter === "unread" && m.isRead) return false;
+      if (filter === "otp" && !extractQuickOtp(`${m.subject ?? ""} ${m.preview ?? ""}`))
+        return false;
+      if (filter === "attachment" && !m.hasAttachments) return false;
+      if (q) {
+        const hay = `${m.from ?? ""} ${m.subject ?? ""} ${m.preview ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [messages, query, filter]);
 
   const copyOtp = async (e: React.MouseEvent, id: string, otp: string) => {
     e.stopPropagation();
@@ -65,7 +92,48 @@ export function NativeInboxList({ messages, loading, onSelect }: Props) {
 
   return (
     <div>
-      {messages.map((m) => {
+      <div className="px-4 pt-1 pb-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari pengirim, subjek, isi…"
+            className="w-full rounded-xl bg-muted/60 border border-transparent focus:border-primary/40 outline-none pl-9 pr-9 py-2 text-[13px] placeholder:text-muted-foreground"
+          />
+          {query !== "" && (
+            <button
+              aria-label="Hapus pencarian"
+              onClick={() => setQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground active:bg-muted"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex gap-1.5 mt-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                "shrink-0 rounded-full px-3 py-1.5 text-[12px] font-bold border active:scale-95",
+                filter === f.key
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border/70"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="text-center text-[13px] text-muted-foreground px-8 py-10">
+          Tidak ada pesan yang cocok.
+        </p>
+      ) : (
+        filtered.map((m) => {
         const meta = senderMeta(m.from);
         const otp = extractQuickOtp(`${m.subject ?? ""} ${m.preview ?? ""}`);
         const unread = !m.isRead;
@@ -124,7 +192,7 @@ export function NativeInboxList({ messages, loading, onSelect }: Props) {
             {unread && <span className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />}
           </button>
         );
-      })}
+        }))}
     </div>
   );
 }

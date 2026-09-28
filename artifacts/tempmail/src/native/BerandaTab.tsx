@@ -1,4 +1,4 @@
-import { LogIn, Mail, Moon, RefreshCw, Sun } from "lucide-react";
+import { CheckCheck, LogIn, Mail, Moon, RefreshCw, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { EmailPane } from "@/components/email-pane";
 import { useAuth } from "@/hooks/use-auth";
@@ -87,6 +87,15 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount }: Props) {
             <span className="min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold inline-flex items-center justify-center">
               {mailbox.unreadCount}
             </span>
+          )}
+          {mailbox.unreadCount > 0 && (
+            <button
+              aria-label="Tandai semua dibaca"
+              onClick={mailbox.markAllRead}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground active:bg-muted"
+            >
+              <CheckCheck className="h-[18px] w-[18px]" />
+            </button>
           )}
           <button
             aria-label="Muat ulang"
