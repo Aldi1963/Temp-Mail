@@ -4,12 +4,15 @@ import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable, broa
 import { eq, count, desc, gte, gt, sql, and, lt, isNotNull, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
+import os from "node:os";
+import { execFile } from "node:child_process";
 import { promisify } from "util";
 import { requireAdmin } from "../lib/auth.js";
 
 const dnsResolve4 = promisify(dns.resolve4);
 const dnsResolveCname = promisify(dns.resolveCname);
 const dnsResolveMx = promisify(dns.resolveMx);
+const execFileAsync = promisify(execFile);
 
 const router = Router();
 
@@ -374,6 +377,110 @@ router.get("/broadcasts", async (_req, res) => {
     createdAt: b.createdAt,
     fcmSent: b.fcmSent ?? false,
   })));
+});
+
+// --- Monitor server ---
+// Setiap bagian dibungkus try/catch sendiri: bila satu metrik gagal,
+// nilainya null, bukan 500.
+router.get("/server", async (_req, res) => {
+  // Format durasi detik ke bahasa Indonesia yang mudah dibaca
+  const formatDurasi = (totalDetik: number): string => {
+    const d = Math.floor(totalDetik / 86400);
+    const h = Math.floor((totalDetik % 86400) / 3600);
+    const m = Math.floor((totalDetik % 3600) / 60);
+    const s = totalDetik % 60;
+    const bagian: string[] = [];
+    if (d > 0) bagian.push(`${d} hari`);
+    if (h > 0) bagian.push(`${h} jam`);
+    if (m > 0) bagian.push(`${m} menit`);
+    if (s > 0 || bagian.length === 0) bagian.push(`${s} detik`);
+    return bagian.join(" ");
+  };
+
+  // CPU: load average 1m/5m/15m + jumlah core
+  let cpu: { load1m: number; load5m: number; load15m: number; cores: number } | null = null;
+  try {
+    const [load1m, load5m, load15m] = os.loadavg();
+    cpu = {
+      load1m: Math.round(load1m * 100) / 100,
+      load5m: Math.round(load5m * 100) / 100,
+      load15m: Math.round(load15m * 100) / 100,
+      cores: os.cpus().length,
+    };
+  } catch {
+    cpu = null;
+  }
+
+  // Memori: MB + persen terpakai
+  let mem: { totalMB: number; freeMB: number; usedMB: number; usedPercent: number } | null = null;
+  try {
+    const totalMB = Math.round(os.totalmem() / 1024 / 1024);
+    const freeMB = Math.round(os.freemem() / 1024 / 1024);
+    const usedMB = totalMB - freeMB;
+    mem = {
+      totalMB,
+      freeMB,
+      usedMB,
+      usedPercent: totalMB > 0 ? Math.round((usedMB / totalMB) * 100) : 0,
+    };
+  } catch {
+    mem = null;
+  }
+
+  // Disk: parse `df -k /` -> GB + persen
+  let disk: { totalGB: number; usedGB: number; availGB: number; usedPercent: number } | null = null;
+  try {
+    const { stdout } = await execFileAsync("df", ["-k", "/"], { timeout: 5000 });
+    const baris = stdout.trim().split("\n").find((l) => l.trim().split(/\s+/).pop() === "/");
+    if (baris) {
+      // Kolom: Filesystem | 1K-blocks | Used | Available | Use% | Mounted on
+      const kolom = baris.trim().split(/\s+/);
+      const totalKB = Number(kolom[1]);
+      const usedKB = Number(kolom[2]);
+      const availKB = Number(kolom[3]);
+      if ([totalKB, usedKB, availKB].every((n) => Number.isFinite(n) && n >= 0)) {
+        const keGB = (kb: number) => Math.round((kb / 1024 / 1024) * 100) / 100;
+        disk = {
+          totalGB: keGB(totalKB),
+          usedGB: keGB(usedKB),
+          availGB: keGB(availKB),
+          usedPercent: totalKB > 0 ? Math.round((usedKB / totalKB) * 100) : 0,
+        };
+      }
+    }
+  } catch {
+    disk = null;
+  }
+
+  // Uptime: detik + format manusiawi
+  let uptime: { seconds: number; human: string } | null = null;
+  try {
+    const seconds = Math.floor(os.uptime());
+    uptime = { seconds, human: formatDurasi(seconds) };
+  } catch {
+    uptime = null;
+  }
+
+  // Ukuran database (Postgres)
+  let dbInfo: { sizeBytes: number; sizeMB: number } | null = null;
+  try {
+    const hasil = await db.execute(sql`SELECT pg_database_size(current_database()) AS size`);
+    const sizeBytes = Number((hasil.rows[0] as { size: string }).size);
+    if (Number.isFinite(sizeBytes)) {
+      dbInfo = { sizeBytes, sizeMB: Math.round((sizeBytes / 1024 / 1024) * 100) / 100 };
+    }
+  } catch {
+    dbInfo = null;
+  }
+
+  res.json({
+    cpu,
+    mem,
+    disk,
+    uptime,
+    db: dbInfo,
+    time: new Date().toISOString(),
+  });
 });
 
 export { router as adminRouter };
