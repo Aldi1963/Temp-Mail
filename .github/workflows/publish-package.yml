@@ -22,6 +22,8 @@ jobs:
           node-version: 20
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @aldi1963/temp-mail-api-client run build
-      - run: pnpm --filter @aldi1963/temp-mail-api-client exec npm publish
+      - name: Publish to GitHub Packages
+        run: npm publish --registry https://npm.pkg.github.com
+        working-directory: lib/api-client-react
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
