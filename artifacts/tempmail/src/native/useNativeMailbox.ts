@@ -12,6 +12,7 @@ import { saveManageToken } from "@/lib/manage-token";
 import { API_BASE_URL } from "@/lib/api-base";
 import { useNativeSettings } from "./settings";
 import { buzz, extractQuickOtp } from "./otp";
+import { markOtpAutoCopied } from "./otpSeen";
 import {
   useGetInbox,
   useMarkMessageRead,
@@ -243,6 +244,8 @@ export function useNativeMailbox(isUnlocked: boolean) {
         } catch {
           /* abaikan */
         }
+        // Tandai agar OtpBanner tidak menyalin ulang pesan yang sama.
+        markOtpAutoCopied(m.id);
         toast({ title: `OTP ${otp} disalin` });
         break;
       }

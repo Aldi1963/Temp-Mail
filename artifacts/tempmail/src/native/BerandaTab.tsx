@@ -27,6 +27,7 @@ import type { NativeMailbox } from "./useNativeMailbox";
 import { NativeInboxList } from "./NativeInboxList";
 import type { NativeMsg } from "./NativeInboxList";
 import { OtpSection } from "./OtpSection";
+import { OtpBanner } from "./OtpBanner";
 import { CustomAddressForm } from "./CustomAddressForm";
 import { nativeFetch, manageHeaders } from "./api";
 
@@ -456,6 +457,9 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
       <div className="px-4 mt-5">
         <OtpSection messages={messages} />
       </div>
+
+      {/* Banner OTP untuk pesan yang belum dibaca (di atas daftar inbox) */}
+      <OtpBanner messages={messages} />
 
       {/* Pesan masuk */}
       <div className="mt-5 pb-6">
