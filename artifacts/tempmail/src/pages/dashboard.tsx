@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { format, formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { API_BASE_URL as BASE } from "../lib/api-base";
 
 interface UserEmail {
   email: string;
@@ -213,8 +214,6 @@ export default function DashboardPage() {
   const safeActivityPage = Math.min(activityPage, activityTotalPages);
   const pagedActivities = activities.slice((safeActivityPage - 1) * ACTIVITY_PAGE_SIZE, safeActivityPage * ACTIVITY_PAGE_SIZE);
   const activityPageNums: (number | string)[] = pageNums(activityTotalPages, safeActivityPage);
-
-  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const fetchData = async () => {
     setLoading(true);

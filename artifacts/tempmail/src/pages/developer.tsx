@@ -11,7 +11,7 @@ import {
   PlayCircle, Eye, EyeOff, ChevronLeft, RefreshCw, Code2, RotateCcw, AlertTriangle, Zap, Plus
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as BASE } from "../lib/api-base";
 const api = (path: string, opts?: RequestInit) =>
   fetch(`${BASE}/api${path}`, { credentials: "include", ...opts });
 

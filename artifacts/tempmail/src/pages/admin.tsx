@@ -82,7 +82,7 @@ interface SiteSettings {
   telegram_bot_username?: string;
 }
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as BASE } from "../lib/api-base";
 
 async function adminApi(path: string, opts?: RequestInit) {
   const fullPath = path.startsWith("/") ? `${BASE}${path}` : `${BASE}/${path}`;

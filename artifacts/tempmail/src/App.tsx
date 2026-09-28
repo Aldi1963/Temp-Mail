@@ -20,6 +20,7 @@ import StatusPage from "@/pages/status";
 import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
+import { ROUTER_BASE } from "./lib/api-base";
 
 // Error Boundary to catch any render errors and prevent white blank screens
 class ErrorBoundary extends React.Component<
@@ -121,7 +122,7 @@ function App() {
           <TooltipProvider>
             <AuthProvider>
               <ApplyBranding />
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <WouterRouter base={ROUTER_BASE}>
                 <Router />
               </WouterRouter>
             </AuthProvider>

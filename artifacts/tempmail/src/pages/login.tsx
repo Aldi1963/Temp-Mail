@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as BASE } from "../lib/api-base";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");

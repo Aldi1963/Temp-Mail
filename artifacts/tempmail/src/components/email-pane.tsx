@@ -65,6 +65,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
+import { API_BASE_URL } from "../lib/api-base";
 
 interface EmailPaneProps {
   activeEmail: string | null;
@@ -239,7 +240,7 @@ export function EmailPane({
     setBurnConfirmOpen(false);
     setIsBurning(true);
     try {
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const base = API_BASE_URL;
       const manageToken = getManageToken(activeEmail);
       const res = await fetch(`${base}/api/email/destroy?email=${encodeURIComponent(activeEmail)}`, {
         method: "DELETE",
@@ -265,7 +266,7 @@ export function EmailPane({
     if (dom) params.append("domain", dom);
     if (username) params.append("username", username);
 
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const base = API_BASE_URL;
     const url = `${base}/api/email/generate?${params.toString()}`;
 
     try {

@@ -20,7 +20,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as API_BASE } from "../lib/api-base";
 
 async function apiFetch(path: string, options?: RequestInit) {
   const fullPath = path.startsWith("/") ? `${API_BASE}${path}` : `${API_BASE}/${path}`;

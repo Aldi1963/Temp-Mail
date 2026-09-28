@@ -11,7 +11,7 @@ import {
   MailCheck, MailWarning, ExternalLink
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as BASE, getFullBase } from "../lib/api-base";
 const api = (path: string, opts?: RequestInit) =>
   fetch(`${BASE}/api${path}`, { credentials: "include", ...opts });
 
@@ -47,7 +47,7 @@ function EmailVerificationCard() {
       toast({ title: "Gagal", description: data.message, variant: "destructive" });
       return;
     }
-    const fullUrl = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "") + data.verifyUrl;
+    const fullUrl = getFullBase() + data.verifyUrl;
     setVerifyUrl(fullUrl);
     toast({ title: "Link verifikasi dibuat!", description: "Klik link di bawah untuk memverifikasi email." });
   };

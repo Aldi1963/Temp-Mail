@@ -9,7 +9,7 @@ import {
   Download, Terminal, X,
 } from "lucide-react";
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as API_BASE, getFullBase } from "../lib/api-base";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -277,15 +277,14 @@ interface BuiltRequest {
 }
 
 function buildHttpRequest(spec: EndpointSpec, values: Record<string, string>): BuiltRequest {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const base = typeof window !== "undefined" ? API_BASE : "";
+  const fullBase = getFullBase();
   const qs = spec.params
     .filter((p) => p.in === "query")
     .map((p) => ({ k: p.name, v: (values[p.name] ?? "").trim() }))
     .filter((q) => q.v)
     .map((q) => `${encodeURIComponent(q.k)}=${encodeURIComponent(q.v)}`)
     .join("&");
-  const url = `${origin}${base}${spec.path}${qs ? `?${qs}` : ""}`;
+  const url = `${fullBase}${spec.path}${qs ? `?${qs}` : ""}`;
   const headers: Record<string, string> = {};
   spec.params
     .filter((p) => p.in === "header")
@@ -360,7 +359,7 @@ function toPy(spec: EndpointSpec, req: BuiltRequest): string {
 // ---------------------------------------------------------------------------
 
 function buildPostmanCollection(): unknown {
-  const baseUrl = typeof window !== "undefined" ? window.location.origin + API_BASE : "";
+  const baseUrl = getFullBase();
   return {
     info: {
       name: "TempMail API",
@@ -798,7 +797,7 @@ export default function ApiDocsPage() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <div className="rounded-xl border border-border p-4 bg-muted/20">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Base URL</p>
-                  <code className="text-sm font-mono break-all">{window.location.origin}{API_BASE}/api</code>
+                  <code className="text-sm font-mono break-all">{getFullBase()}/api</code>
                 </div>
                 <div className="rounded-xl border border-border p-4 bg-muted/20">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Format</p>
@@ -825,7 +824,7 @@ export default function ApiDocsPage() {
                 Pengguna login otomatis terotentikasi via session.
               </p>
 <CodeBlock lang="curl">{`curl -H "X-API-Key: <redacted>
-  ${window.location.origin}${API_BASE}/api/email/generate`}</CodeBlock>
+  ${getFullBase()}/api/email/generate`}</CodeBlock>
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 flex gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 dark:text-amber-300">

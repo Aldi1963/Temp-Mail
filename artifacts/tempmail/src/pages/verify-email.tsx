@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { API_BASE_URL as BASE } from "../lib/api-base";
 
 export default function VerifyEmailPage() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");

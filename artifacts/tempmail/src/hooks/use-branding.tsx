@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { API_BASE_URL } from "../lib/api-base";
 
 export interface SiteBranding {
   site_name?: string;
@@ -16,7 +17,7 @@ export function useBranding() {
   const query = useQuery<SiteBranding>({
     queryKey: ["site-branding"],
     queryFn: async () => {
-      const r = await fetch(`${import.meta.env.BASE_URL}api/site/branding`, {
+      const r = await fetch(`${API_BASE_URL}/api/site/branding`, {
         credentials: "include",
       });
       if (!r.ok) return {};
