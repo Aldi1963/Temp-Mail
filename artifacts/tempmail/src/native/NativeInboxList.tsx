@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Inbox, Search, Trash2, X } from "lucide-react";
+import { Check, Copy, Search, Trash2, X } from "lucide-react";
 import { getGetInboxQueryKey } from "@aldi1963/temp-mail-api-client";
 import { cn } from "@/lib/utils";
 import { nativeFetch, manageHeaders } from "./api";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { buzz, cleanSnippet, extractQuickOtp, senderMeta, timeAgo } from "./otp";
+import { copyText } from "./clipboard";
 
 export interface NativeMsg {
   id: string;
@@ -34,6 +37,8 @@ interface Props {
 
 export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [copiedEmail, setCopiedEmail] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<MsgFilter>("semua");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -75,6 +80,15 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
     window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500);
   };
 
+  const copyActiveEmail = async () => {
+    const ok = await copyText(email);
+    buzz(15);
+    if (ok) {
+      setCopiedEmail(true);
+      window.setTimeout(() => setCopiedEmail(false), 1500);
+    }
+  };
+
   // Hapus pesan per item — two-tap confirm inline, tanpa popup.
   const tryDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -93,6 +107,30 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
         { method: "DELETE", headers: manageHeaders(email) }
       );
       queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email }) });
+      toast({
+        title: "Pesan dipindah ke sampah",
+        action: (
+          <ToastAction
+            altText="Urungkan"
+            onClick={() => {
+              nativeFetch("/api/email/message/restore", {
+                method: "POST",
+                headers: manageHeaders(email),
+                body: JSON.stringify({ id, email }),
+              })
+                .then(() => {
+                  queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email }) });
+                  toast({ title: "Pesan dikembalikan" });
+                })
+                .catch(() => {
+                  toast({ title: "Gagal mengurungkan", variant: "destructive" });
+                });
+            }}
+          >
+            Urungkan
+          </ToastAction>
+        ),
+      });
     } catch {
       /* abaikan — daftar akan tetap tampil */
     } finally {
@@ -119,13 +157,57 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
   if (messages.length === 0) {
     return (
       <div className="flex flex-col items-center text-center px-8 py-10">
-        <span className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-          <Inbox className="h-7 w-7 text-primary" />
-        </span>
-        <p className="text-sm font-bold">Belum ada pesan</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Alamat ini siap menerima email. Pesan baru muncul otomatis di sini.
+        {/* Ilustrasi amplop kosong — SVG inline, tanpa aset eksternal */}
+        <svg
+          width="112"
+          height="88"
+          viewBox="0 0 112 88"
+          fill="none"
+          aria-hidden
+          className="text-primary mb-4"
+        >
+          <rect x="10" y="14" width="92" height="62" rx="12" fill="currentColor" opacity="0.12" />
+          <path
+            d="M17 24 L56 52 L95 24"
+            stroke="currentColor"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.55"
+          />
+          <rect
+            x="10"
+            y="14"
+            width="92"
+            height="62"
+            rx="12"
+            stroke="currentColor"
+            strokeWidth="4"
+            opacity="0.35"
+          />
+          <circle cx="88" cy="64" r="15" fill="currentColor" opacity="0.9" />
+          <path
+            d="M88 58 v12 M82 64 h12"
+            stroke="#fff"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+          />
+        </svg>
+        <p className="text-sm font-bold">Kotak masuk kosong</p>
+        <p className="text-xs text-muted-foreground mt-1 max-w-[260px]">
+          Alamat ini siap menerima email. Bagikan alamatmu dan pesan baru akan muncul otomatis di
+          sini.
         </p>
+        {email && (
+          <button
+            type="button"
+            onClick={copyActiveEmail}
+            className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-bold bg-primary text-primary-foreground rounded-full px-5 py-2.5 active:scale-[0.97]"
+          >
+            {copiedEmail ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copiedEmail ? "Tersalin!" : "Salin Alamat Email"}
+          </button>
+        )}
       </div>
     );
   }

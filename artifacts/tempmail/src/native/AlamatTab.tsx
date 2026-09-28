@@ -4,7 +4,7 @@ import { Bell, BellOff, Check, Copy, Flame, Plus, QrCode, Star, Trash2, X } from
 import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { buzz, timeAgo } from "./otp";
+import { buzz, timeAgo, timeUntil } from "./otp";
 import { useNativeSettings } from "./settings";
 import { nativeFetch, manageHeaders } from "./api";
 import type { NativeMailbox } from "./useNativeMailbox";
@@ -42,7 +42,11 @@ function IconBtn({
 interface ServerEmail {
   email: string;
   label?: string | null;
+  expiresAt?: string | null;
 }
+
+// Masa aktif alamat guest (tanpa akun): 30 hari sejak dibuat, seperti web.
+const GUEST_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const { mergedInboxList, activeEmail, setActiveEmail, removeFromList, generateEmail, isGenerating, user } =
@@ -55,20 +59,26 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [extending, setExtending] = useState<string | null>(null);
   const [confirmDestroy, setConfirmDestroy] = useState<string | null>(null);
   const [serverLabels, setServerLabels] = useState<Record<string, string>>({});
+  const [expiryMap, setExpiryMap] = useState<Record<string, string>>({});
   const [customOpen, setCustomOpen] = useState(false);
 
-  // Muat label dari server sekali bila sudah login (fallback bila label lokal kosong).
+  // Muat label + masa kedaluwarsa dari server sekali bila sudah login
+  // (fallback bila label lokal kosong). expiryMap juga diperbarui lokal
+  // setiap kali perpanjangan berhasil.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     nativeFetch<{ emails?: ServerEmail[] }>("/api/user/emails")
       .then((d) => {
         if (cancelled) return;
-        const map: Record<string, string> = {};
+        const labels: Record<string, string> = {};
+        const expiries: Record<string, string> = {};
         for (const e of d?.emails ?? []) {
-          if (e?.email && e.label) map[e.email] = e.label;
+          if (e?.email && e.label) labels[e.email] = e.label;
+          if (e?.email && e.expiresAt) expiries[e.email] = e.expiresAt;
         }
-        setServerLabels(map);
+        setServerLabels(labels);
+        setExpiryMap((prev) => ({ ...expiries, ...prev }));
       })
       .catch(() => {});
     return () => {
@@ -77,6 +87,15 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   }, [user]);
 
   const labelFor = (email: string) => settings.labels[email] || serverLabels[email] || "";
+
+  // Kedaluwarsa alamat: dari server bila login, else 30 hari sejak dibuat.
+  const expiresAtFor = (email: string, addedAt: string): string | null => {
+    const hit = expiryMap[email];
+    if (hit) return hit;
+    const t = Date.parse(addedAt ?? "");
+    if (Number.isNaN(t)) return null;
+    return new Date(t + GUEST_LIFETIME_MS).toISOString();
+  };
 
   // Favorit selalu di atas, urutan lain dipertahankan.
   const sorted = [...mergedInboxList].sort((a, b) => {
@@ -124,12 +143,18 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const extend = async (email: string) => {
     setExtending(email);
     try {
-      const data = await nativeFetch<{ appliedMinutes?: number }>("/api/email/extend", {
-        method: "POST",
-        headers: manageHeaders(email),
-        body: JSON.stringify({ email, extraMinutes: 60 }),
-      });
+      const data = await nativeFetch<{ appliedMinutes?: number; newExpiresAt?: string }>(
+        "/api/email/extend",
+        {
+          method: "POST",
+          headers: manageHeaders(email),
+          body: JSON.stringify({ email, extraMinutes: 60 }),
+        }
+      );
       const mins = data?.appliedMinutes ?? 60;
+      if (data?.newExpiresAt) {
+        setExpiryMap((prev) => ({ ...prev, [email]: data.newExpiresAt as string }));
+      }
       toast({ title: `Diperpanjang +${mins} menit`, description: "Masa aktif alamat bertambah." });
     } catch (e) {
       toast({
@@ -232,6 +257,8 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
           const muted = settings.notifyOff.includes(e.email);
           const label = labelFor(e.email);
           const armed = confirmDestroy === e.email;
+          const remaining = timeUntil(expiresAtFor(e.email, e.addedAt));
+          const expired = remaining === "kedaluwarsa";
           return (
             <div
               key={e.email}
@@ -263,6 +290,16 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
                       {on ? "Aktif · " : ""}
                       {fav ? "★ " : ""}
                       ditambahkan {timeAgo(e.addedAt)}
+                      {remaining && (
+                        <span
+                          className={cn(
+                            "font-bold",
+                            expired ? "text-destructive" : "text-primary"
+                          )}
+                        >
+                          {" "}· tersisa {remaining}
+                        </span>
+                      )}
                     </span>
                   </span>
                 </button>

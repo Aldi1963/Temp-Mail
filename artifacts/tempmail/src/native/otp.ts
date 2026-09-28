@@ -45,6 +45,22 @@ export function timeAgo(iso: string | null | undefined): string {
   return new Date(t).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
+// Sisa waktu menuju kedaluwarsa, format ringkas: "29 hari" / "3 jam" / "45 mnt".
+// Mengembalikan "kedaluwarsa" bila waktu sudah lewat, "" bila input tidak valid.
+export function timeUntil(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const s = (t - Date.now()) / 1000;
+  if (s <= 0) return "kedaluwarsa";
+  const min = Math.floor(s / 60);
+  if (min < 1) return "<1 mnt";
+  if (min < 60) return `${min} mnt`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} jam`;
+  return `${Math.floor(hr / 24)} hari`;
+}
+
 export function buzz(pattern: number | number[] = 15): void {
   try {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(pattern);
