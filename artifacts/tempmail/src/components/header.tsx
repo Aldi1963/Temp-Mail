@@ -99,7 +99,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
         </nav>
 
         {/* Right controls */}
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex items-center gap-1 sm:gap-1.5 ml-auto">
           {deferredPrompt && (
             <Button
               variant="outline"
@@ -170,6 +170,15 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
                   : <VolumeX className="h-4 w-4 text-muted-foreground" />}
                 {soundEnabled ? "Matikan suara" : "Aktifkan suara"}
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="gap-2 cursor-pointer px-3 py-2 min-[400px]:hidden"
+              >
+                {theme === "dark"
+                  ? <Sun className="h-4 w-4 text-muted-foreground" />
+                  : <Moon className="h-4 w-4 text-muted-foreground" />}
+                {theme === "dark" ? "Mode terang" : "Mode gelap"}
+              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/api-docs" className="flex items-center gap-2 cursor-pointer px-3 py-2">
                   <Code2 className="h-4 w-4 text-muted-foreground" />
@@ -184,7 +193,7 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             title={theme === "dark" ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
-            className="flex h-10 w-10 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground shrink-0"
+            className="hidden min-[400px]:flex h-10 w-10 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground shrink-0"
           >
             {theme === "dark"
               ? <Sun className="h-4 w-4" />
@@ -267,9 +276,9 @@ export function Header({ rightSlot, mobileSlot }: HeaderProps) {
               </DropdownMenu>
             ) : (
               <Link href="/login">
-                <Button size="sm" className="h-8 gap-1.5 text-xs bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
+                <Button size="sm" title="Masuk" aria-label="Masuk" className="h-8 gap-1.5 text-xs bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
                   <LogIn className="h-3.5 w-3.5" />
-                  Masuk
+                  <span className="hidden min-[400px]:inline">Masuk</span>
                 </Button>
               </Link>
             )
