@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
+  ArrowLeft,
   ChevronRight,
+  CircleUserRound,
   Code2,
   Flame,
   Info,
+  LayoutGrid,
   LogIn,
   LogOut,
   Moon,
   ShieldCheck,
+  SlidersHorizontal,
   Sun,
   Trash2,
   Zap,
@@ -81,7 +85,69 @@ function SettingRow({
   );
 }
 
+function MenuRow({
+  icon: Icon,
+  label,
+  desc,
+  onClick,
+}: {
+  icon: typeof Zap;
+  label: string;
+  desc?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 rounded-2xl px-3 py-3.5 active:bg-muted/70 text-left"
+    >
+      <span className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0">
+        <Icon className="h-[18px] w-[18px] text-foreground" />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13.5px] font-bold">{label}</span>
+        {desc && (
+          <span className="block text-[11px] text-muted-foreground">{desc}</span>
+        )}
+      </span>
+      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+    </button>
+  );
+}
+
+function SubHeader({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <div
+        className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <div className="flex items-center gap-1 px-2 h-14">
+          <button
+            aria-label="Kembali"
+            onClick={onBack}
+            className="w-10 h-10 rounded-full flex items-center justify-center active:bg-muted"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <span className="text-[16px] font-extrabold">{title}</span>
+        </div>
+      </div>
+      <div className="px-3 py-3 pb-8">{children}</div>
+    </div>
+  );
+}
+
 type PinFlow = "setup" | "confirm" | "disable" | null;
+type SubMenu = "akun" | "pengaturan" | "lainnya" | null;
 
 export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
   const { user, logout } = useNativeAuth();
@@ -91,75 +157,26 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
   const [pinFlow, setPinFlow] = useState<PinFlow>(null);
   const [firstPin, setFirstPin] = useState("");
   const [pinError, setPinError] = useState("");
+  const [subMenu, setSubMenu] = useState<SubMenu>(null);
   const pinRowRef = useRef<HTMLDivElement>(null);
   const [pinHighlight, setPinHighlight] = useState(false);
 
-  // Sorot baris PIN saat dibuka dari tombol kunci di Beranda.
+  // Sorot baris PIN saat dibuka dari tombol kunci di Beranda:
+  // buka sub-menu Pengaturan dulu, lalu scroll ke baris PIN.
   useEffect(() => {
     if (!pinFlash) return;
-    pinRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    setPinHighlight(true);
-    const t = window.setTimeout(() => setPinHighlight(false), 4000);
-    return () => window.clearTimeout(t);
+    setSubMenu("pengaturan");
+    const t1 = window.setTimeout(() => {
+      pinRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setPinHighlight(true);
+    }, 250);
+    const t2 = window.setTimeout(() => setPinHighlight(false), 4250);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
   }, [pinFlash]);
   const dark = theme === "dark";
-
-  const menu = [
-    {
-      icon: dark ? Sun : Moon,
-      label: "Mode gelap",
-      desc: dark ? "Aktif" : "Nonaktif",
-      action: () => setTheme(dark ? "light" : "dark"),
-    },
-    {
-      icon: Code2,
-      label: "Dokumentasi API",
-      desc: "Coba endpoint langsung",
-      action: () => onOpenPage("api-docs"),
-    },
-    {
-      icon: Activity,
-      label: "Status server",
-      desc: undefined as string | undefined,
-      action: () => onOpenPage("status"),
-    },
-    {
-      icon: Trash2,
-      label: "Tong Sampah",
-      desc: "Pesan terhapus, bisa dikembalikan",
-      action: () => onOpenPage("trash"),
-    },
-    {
-      icon: Send,
-      label: "Telegram",
-      desc: "Pesan diteruskan otomatis ke Telegram",
-      action: () => onOpenPage("telegram"),
-    },
-    {
-      icon: Webhook,
-      label: "Developer",
-      desc: "Webhook & API key",
-      action: () => onOpenPage("developer"),
-    },
-    {
-      icon: ShieldX,
-      label: "Blokir Pengirim",
-      desc: "Sembunyikan pesan dari pengirim tertentu",
-      action: () => onOpenPage("blocked-senders"),
-    },
-    {
-      icon: Info,
-      label: "Tentang",
-      desc: undefined as string | undefined,
-      action: () => onOpenPage("tentang"),
-    },
-    {
-      icon: ShieldCheck,
-      label: "Privasi",
-      desc: undefined as string | undefined,
-      action: () => onOpenPage("privacy"),
-    },
-  ];
 
   const pinComplete = async (pin: string) => {
     setPinError("");
@@ -202,59 +219,72 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
         ? "Ulangi PIN untuk konfirmasi"
         : "Masukkan PIN saat ini";
 
-  return (
-    <div>
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60"
-        style={{ paddingTop: "env(safe-area-inset-top)" }}
-      >
-        <div className="flex items-center h-14 px-4">
-          <span className="text-[17px] font-extrabold tracking-tight">Lainnya</span>
+  const accountCard = user?.email ? (
+    <div className="rounded-3xl bg-primary/[0.08] border border-primary/20 p-4 flex items-center gap-3">
+      <span className="w-11 h-11 rounded-full bg-primary/15 text-primary text-[18px] font-extrabold flex items-center justify-center shrink-0">
+        {user.email[0].toUpperCase()}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[14px] font-extrabold truncate">{user.email}</div>
+        <div className="text-[11px] text-muted-foreground">
+          {user.role === "admin" ? "Administrator" : "Akun tersimpan permanen"}
         </div>
       </div>
+      <button
+        onClick={() => { void logout(); }}
+        className="inline-flex items-center gap-1.5 text-[12px] font-bold text-destructive bg-destructive/10 rounded-xl px-3 py-2 active:scale-[0.97]"
+      >
+        <LogOut className="h-3.5 w-3.5" />
+        Keluar
+      </button>
+    </div>
+  ) : (
+    <button
+      onClick={onOpenLogin}
+      className="w-full rounded-3xl bg-primary text-primary-foreground p-4 flex items-center gap-3 active:scale-[0.99]"
+    >
+      <span className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+        <LogIn className="h-5 w-5" />
+      </span>
+      <span className="text-left flex-1">
+        <span className="block font-extrabold text-[14px]">Masuk / Daftar</span>
+        <span className="block text-[11px] opacity-80">
+          Simpan alamat & riwayat pesan permanen
+        </span>
+      </span>
+      <ChevronRight className="h-5 w-5 opacity-70" />
+    </button>
+  );
 
-      <div className="p-3">
-        {user?.email ? (
-          <div className="rounded-3xl bg-primary/[0.08] border border-primary/20 p-4 flex items-center gap-3">
-            <span className="w-11 h-11 rounded-full bg-primary/15 text-primary text-[18px] font-extrabold flex items-center justify-center shrink-0">
-              {user.email[0].toUpperCase()}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[14px] font-extrabold truncate">{user.email}</div>
-              <div className="text-[11px] text-muted-foreground">
-                {user.role === "admin" ? "Administrator" : "Akun tersimpan permanen"}
-              </div>
-            </div>
-            <button
-              onClick={() => { void logout(); }}
-              className="inline-flex items-center gap-1.5 text-[12px] font-bold text-destructive bg-destructive/10 rounded-xl px-3 py-2 active:scale-[0.97]"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Keluar
-            </button>
+  // ---------- Sub-menu: Akun ----------
+  if (subMenu === "akun") {
+    return (
+      <SubHeader title="Akun" onBack={() => setSubMenu(null)}>
+        <div className="space-y-1">
+          {accountCard}
+          <div className="pt-2 space-y-0.5">
+            <MenuRow
+              icon={Send}
+              label="Telegram"
+              desc="Pesan diteruskan otomatis ke Telegram"
+              onClick={() => onOpenPage("telegram")}
+            />
+            <MenuRow
+              icon={Webhook}
+              label="Developer"
+              desc="Webhook & API key"
+              onClick={() => onOpenPage("developer")}
+            />
           </div>
-        ) : (
-          <button
-            onClick={onOpenLogin}
-            className="w-full rounded-3xl bg-primary text-primary-foreground p-4 flex items-center gap-3 active:scale-[0.99]"
-          >
-            <span className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-              <LogIn className="h-5 w-5" />
-            </span>
-            <span className="text-left flex-1">
-              <span className="block font-extrabold text-[14px]">Masuk / Daftar</span>
-              <span className="block text-[11px] opacity-80">
-                Simpan alamat & riwayat pesan permanen
-              </span>
-            </span>
-            <ChevronRight className="h-5 w-5 opacity-70" />
-          </button>
-        )}
-      </div>
+        </div>
+      </SubHeader>
+    );
+  }
 
-      <div className="px-3 pb-1">
-        <p className="px-3 pt-1 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">
-          Pengaturan
-        </p>
+  // ---------- Sub-menu: Pengaturan ----------
+  if (subMenu === "pengaturan") {
+    return (
+      <SubHeader title="Pengaturan" onBack={() => setSubMenu(null)}>
         <div className="space-y-0.5">
           <SettingRow
             icon={Zap}
@@ -287,20 +317,26 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
           >
             <SettingRow
               icon={LockKeyhole}
-            label="Kunci aplikasi dengan PIN"
-            desc={settings.pinEnabled ? "Aktif" : "Nonaktif"}
-          >
-            <Toggle
-              on={settings.pinEnabled}
-              onChange={() => {
-                setPinError("");
-                setFirstPin("");
-                setPinFlow(settings.pinEnabled ? "disable" : "setup");
-              }}
               label="Kunci aplikasi dengan PIN"
-            />
+              desc={settings.pinEnabled ? "Aktif" : "Nonaktif"}
+            >
+              <Toggle
+                on={settings.pinEnabled}
+                onChange={() => {
+                  setPinError("");
+                  setFirstPin("");
+                  setPinFlow(settings.pinEnabled ? "disable" : "setup");
+                }}
+                label="Kunci aplikasi dengan PIN"
+              />
             </SettingRow>
           </div>
+          <MenuRow
+            icon={dark ? Sun : Moon}
+            label="Mode gelap"
+            desc={dark ? "Aktif" : "Nonaktif"}
+            onClick={() => setTheme(dark ? "light" : "dark")}
+          />
         </div>
 
         {pinFlow && (
@@ -330,33 +366,122 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
             )}
           </div>
         )}
+      </SubHeader>
+    );
+  }
+
+  // ---------- Sub-menu: Lainnya ----------
+  if (subMenu === "lainnya") {
+    const items = [
+      {
+        icon: Trash2,
+        label: "Tong Sampah",
+        desc: "Pesan terhapus, bisa dikembalikan",
+        action: () => onOpenPage("trash"),
+      },
+      {
+        icon: ShieldX,
+        label: "Blokir Pengirim",
+        desc: "Sembunyikan pesan dari pengirim tertentu",
+        action: () => onOpenPage("blocked-senders"),
+      },
+      {
+        icon: Code2,
+        label: "Dokumentasi API",
+        desc: "Coba endpoint langsung",
+        action: () => onOpenPage("api-docs"),
+      },
+      {
+        icon: Activity,
+        label: "Status server",
+        desc: undefined as string | undefined,
+        action: () => onOpenPage("status"),
+      },
+      {
+        icon: Info,
+        label: "Tentang",
+        desc: undefined as string | undefined,
+        action: () => onOpenPage("tentang"),
+      },
+      {
+        icon: ShieldCheck,
+        label: "Privasi",
+        desc: undefined as string | undefined,
+        action: () => onOpenPage("privacy"),
+      },
+    ];
+    return (
+      <SubHeader title="Lainnya" onBack={() => setSubMenu(null)}>
+        <div className="space-y-0.5">
+          {items.map((m) => (
+            <MenuRow
+              key={m.label}
+              icon={m.icon}
+              label={m.label}
+              desc={m.desc}
+              onClick={m.action}
+            />
+          ))}
+        </div>
+      </SubHeader>
+    );
+  }
+
+  // ---------- Halaman utama: 3 grup menu ----------
+  const groups: { key: SubMenu; icon: typeof Zap; label: string; desc: string }[] = [
+    {
+      key: "akun",
+      icon: CircleUserRound,
+      label: "Akun",
+      desc: user?.email ? user.email : "Masuk, Telegram & Developer",
+    },
+    {
+      key: "pengaturan",
+      icon: SlidersHorizontal,
+      label: "Pengaturan",
+      desc: "OTP otomatis, kunci PIN & mode gelap",
+    },
+    {
+      key: "lainnya",
+      icon: LayoutGrid,
+      label: "Lainnya",
+      desc: "Tong sampah, blokir & info aplikasi",
+    },
+  ];
+
+  return (
+    <div>
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <div className="flex items-center h-14 px-4">
+          <span className="text-[17px] font-extrabold tracking-tight">Lainnya</span>
+        </div>
       </div>
 
-      <div className="px-3 pb-3 space-y-1">
-        {menu.map((m) => {
-          const Icon = m.icon;
+      <div className="px-3 py-3 space-y-2.5">
+        {groups.map((g) => {
+          const Icon = g.icon;
           return (
             <button
-              key={m.label}
-              onClick={m.action}
-              className="w-full flex items-center gap-3 rounded-2xl px-3 py-3.5 active:bg-muted/70 text-left"
+              key={g.key}
+              onClick={() => setSubMenu(g.key)}
+              className="w-full flex items-center gap-3.5 rounded-3xl border border-border/70 bg-card px-4 py-4 active:bg-muted/60 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
             >
-              <span className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                <Icon className="h-[18px] w-[18px] text-foreground" />
+              <span className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Icon className="h-5 w-5" />
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-[13.5px] font-bold">{m.label}</span>
-                {m.desc && (
-                  <span className="block text-[11px] text-muted-foreground">{m.desc}</span>
-                )}
+                <span className="block text-[15px] font-extrabold">{g.label}</span>
+                <span className="block text-[12px] text-muted-foreground truncate">{g.desc}</span>
               </span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
             </button>
           );
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground text-center pb-8">TempMail · v1.1.0</p>
+      <p className="text-[11px] text-muted-foreground text-center pb-8">TempMail · v1.3.0</p>
     </div>
   );
 }
