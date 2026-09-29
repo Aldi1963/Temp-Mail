@@ -15,6 +15,7 @@ import {
   Zap,
   LockKeyhole,
   Send,
+  Webhook,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -132,6 +133,12 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       label: "Telegram",
       desc: "Pesan diteruskan otomatis ke Telegram",
       action: () => onOpenPage("telegram"),
+    },
+    {
+      icon: Webhook,
+      label: "Developer",
+      desc: "Webhook & API key",
+      action: () => onOpenPage("developer"),
     },
     {
       icon: Info,

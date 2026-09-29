@@ -22,9 +22,17 @@ import { NativeAboutPage } from "./NativeAboutPage";
 import { NativePrivacyPage } from "./NativePrivacyPage";
 import { TrashPage } from "./TrashPage";
 import { TelegramSettings } from "./TelegramSettings";
+import { NativeDeveloperPage } from "./NativeDeveloperPage";
 import { initPushNotifications, refreshPushRegistration } from "./push";
 
-export type NativePage = "api-docs" | "status" | "tentang" | "privacy" | "trash" | "telegram";
+export type NativePage =
+  | "api-docs"
+  | "status"
+  | "tentang"
+  | "privacy"
+  | "trash"
+  | "telegram"
+  | "developer";
 
 const PAGE_TITLES: Record<NativePage, string> = {
   "api-docs": "Dokumentasi API",
@@ -33,6 +41,7 @@ const PAGE_TITLES: Record<NativePage, string> = {
   privacy: "Privasi",
   trash: "Tong Sampah",
   telegram: "Telegram",
+  developer: "Developer",
 };
 
 // Pola scroll: dokumen yang scroll (bukan container bersarang) agar mulus
@@ -235,6 +244,9 @@ function NativeAppInner() {
             {page === "privacy" && <NativePrivacyPage />}
             {page === "trash" && mailbox.activeEmail && <TrashPage email={mailbox.activeEmail} />}
             {page === "telegram" && <TelegramSettings onOpenLogin={() => setLoginOpen(true)} />}
+            {page === "developer" && (
+              <NativeDeveloperPage onOpenLogin={() => setLoginOpen(true)} />
+            )}
           </SubPage>
         )}
       </div>
