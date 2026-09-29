@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { NativeToaster } from "@/native/NativeToaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
@@ -193,7 +194,7 @@ function App() {
                 <Router />
               </WouterRouter>
             </AuthProvider>
-            <Toaster />
+            {Capacitor.isNativePlatform() ? <NativeToaster /> : <Toaster />}
           </TooltipProvider>
         </QueryClientProvider>
       </ThemeProvider>
