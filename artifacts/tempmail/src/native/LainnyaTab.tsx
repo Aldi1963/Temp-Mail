@@ -7,8 +7,9 @@ import {
   CircleUserRound,
   Code2,
   Flame,
+  Inbox,
   Info,
-  LayoutGrid,
+  LifeBuoy,
   LogIn,
   LogOut,
   Moon,
@@ -18,6 +19,7 @@ import {
   Trash2,
   Zap,
   LockKeyhole,
+  PlugZap,
   Send,
   ShieldX,
   Webhook,
@@ -147,7 +149,7 @@ function SubHeader({
 }
 
 type PinFlow = "setup" | "confirm" | "disable" | null;
-type SubMenu = "akun" | "pengaturan" | "lainnya" | null;
+type SubMenu = "akun" | "pengaturan" | "integrasi" | "pesan" | "bantuan" | null;
 
 export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
   const { user, logout } = useNativeAuth();
@@ -260,23 +262,7 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
   if (subMenu === "akun") {
     return (
       <SubHeader title="Akun" onBack={() => setSubMenu(null)}>
-        <div className="space-y-1">
-          {accountCard}
-          <div className="pt-2 space-y-0.5">
-            <MenuRow
-              icon={Send}
-              label="Telegram"
-              desc="Pesan diteruskan otomatis ke Telegram"
-              onClick={() => onOpenPage("telegram")}
-            />
-            <MenuRow
-              icon={Webhook}
-              label="Developer"
-              desc="Webhook & API key"
-              onClick={() => onOpenPage("developer")}
-            />
-          </div>
-        </div>
+        <div className="space-y-1">{accountCard}</div>
       </SubHeader>
     );
   }
@@ -370,58 +356,79 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
     );
   }
 
-  // ---------- Sub-menu: Lainnya ----------
-  if (subMenu === "lainnya") {
-    const items = [
-      {
-        icon: Trash2,
-        label: "Tong Sampah",
-        desc: "Pesan terhapus, bisa dikembalikan",
-        action: () => onOpenPage("trash"),
-      },
-      {
-        icon: ShieldX,
-        label: "Blokir Pengirim",
-        desc: "Sembunyikan pesan dari pengirim tertentu",
-        action: () => onOpenPage("blocked-senders"),
-      },
-      {
-        icon: Code2,
-        label: "Dokumentasi API",
-        desc: "Coba endpoint langsung",
-        action: () => onOpenPage("api-docs"),
-      },
-      {
-        icon: Activity,
-        label: "Status server",
-        desc: undefined as string | undefined,
-        action: () => onOpenPage("status"),
-      },
-      {
-        icon: Info,
-        label: "Tentang",
-        desc: undefined as string | undefined,
-        action: () => onOpenPage("tentang"),
-      },
-      {
-        icon: ShieldCheck,
-        label: "Privasi",
-        desc: undefined as string | undefined,
-        action: () => onOpenPage("privacy"),
-      },
-    ];
+  // ---------- Sub-menu: Integrasi ----------
+  if (subMenu === "integrasi") {
     return (
-      <SubHeader title="Lainnya" onBack={() => setSubMenu(null)}>
+      <SubHeader title="Integrasi" onBack={() => setSubMenu(null)}>
         <div className="space-y-0.5">
-          {items.map((m) => (
-            <MenuRow
-              key={m.label}
-              icon={m.icon}
-              label={m.label}
-              desc={m.desc}
-              onClick={m.action}
-            />
-          ))}
+          <MenuRow
+            icon={Send}
+            label="Telegram"
+            desc="Pesan diteruskan otomatis ke Telegram"
+            onClick={() => onOpenPage("telegram")}
+          />
+          <MenuRow
+            icon={Webhook}
+            label="Developer"
+            desc="Webhook & API key"
+            onClick={() => onOpenPage("developer")}
+          />
+        </div>
+      </SubHeader>
+    );
+  }
+
+  // ---------- Sub-menu: Pesan ----------
+  if (subMenu === "pesan") {
+    return (
+      <SubHeader title="Pesan" onBack={() => setSubMenu(null)}>
+        <div className="space-y-0.5">
+          <MenuRow
+            icon={Trash2}
+            label="Tong Sampah"
+            desc="Pesan terhapus, bisa dikembalikan"
+            onClick={() => onOpenPage("trash")}
+          />
+          <MenuRow
+            icon={ShieldX}
+            label="Blokir Pengirim"
+            desc="Sembunyikan pesan dari pengirim tertentu"
+            onClick={() => onOpenPage("blocked-senders")}
+          />
+        </div>
+      </SubHeader>
+    );
+  }
+
+  // ---------- Sub-menu: Bantuan ----------
+  if (subMenu === "bantuan") {
+    return (
+      <SubHeader title="Bantuan" onBack={() => setSubMenu(null)}>
+        <div className="space-y-0.5">
+          <MenuRow
+            icon={Code2}
+            label="Dokumentasi API"
+            desc="Coba endpoint langsung"
+            onClick={() => onOpenPage("api-docs")}
+          />
+          <MenuRow
+            icon={Activity}
+            label="Status server"
+            desc="Cek kondisi layanan"
+            onClick={() => onOpenPage("status")}
+          />
+          <MenuRow
+            icon={Info}
+            label="Tentang"
+            desc="Info aplikasi TempMail"
+            onClick={() => onOpenPage("tentang")}
+          />
+          <MenuRow
+            icon={ShieldCheck}
+            label="Privasi"
+            desc="Kebijakan privasi"
+            onClick={() => onOpenPage("privacy")}
+          />
         </div>
       </SubHeader>
     );
@@ -433,7 +440,7 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       key: "akun",
       icon: CircleUserRound,
       label: "Akun",
-      desc: user?.email ? user.email : "Masuk, Telegram & Developer",
+      desc: user?.email ? user.email : "Masuk / Daftar",
     },
     {
       key: "pengaturan",
@@ -442,10 +449,22 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       desc: "OTP otomatis, kunci PIN & mode gelap",
     },
     {
-      key: "lainnya",
-      icon: LayoutGrid,
-      label: "Lainnya",
-      desc: "Tong sampah, blokir & info aplikasi",
+      key: "integrasi",
+      icon: PlugZap,
+      label: "Integrasi",
+      desc: "Telegram & Developer",
+    },
+    {
+      key: "pesan",
+      icon: Inbox,
+      label: "Pesan",
+      desc: "Tong sampah & blokir pengirim",
+    },
+    {
+      key: "bantuan",
+      icon: LifeBuoy,
+      label: "Bantuan",
+      desc: "API, status server & info aplikasi",
     },
   ];
 
