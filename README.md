@@ -5,6 +5,14 @@ Layanan email sekali pakai (disposable email) — buka halaman, langsung dapat a
 - **Live:** https://m.clipku.com/tempmail/
 - **Dokumentasi API:** https://m.clipku.com/tempmail/api-docs
 
+## Aplikasi Android
+
+- **Unduh APK terbaru:** [releases/tempmail-debug.apk](releases/tempmail-debug.apk) — v1.3.0
+- Versi-versi lama ada di halaman [Releases](../../releases)
+- Cara pasang: hapus-instal versi lama dulu, lalu instal APK yang baru (belum ditandatangani Play Store — izinkan "instal dari sumber tidak dikenal" saat diminta)
+
+Fitur khusus aplikasi: kunci PIN/biometrik, widget home screen, pengingat alamat kedaluwarsa (H-24 & H-1), salin OTP otomatis, retensi & hapus pesan otomatis per alamat, ekspor/backup alamat (JSON), teruskan pesan ke Telegram, bottom navigation ala aplikasi native.
+
 ## Fitur
 
 ### Untuk pengguna
@@ -15,6 +23,11 @@ Layanan email sekali pakai (disposable email) — buka halaman, langsung dapat a
 - **Akun opsional** — login untuk menyimpan alamat & riwayat pesan
 - **Dashboard** — statistik, riwayat email, label, klaim alamat guest
 - **Keamanan akun** — 2FA (TOTP), ganti password, proteksi brute-force
+- **Teruskan ke Telegram** — pesan baru & OTP otomatis diteruskan ke chat Telegram yang ditautkan
+- **Webhook & API key** — kelola webhook dan API key developer langsung dari aplikasi/web
+- **Blokir pengirim** — daftar blokir manual per email atau domain
+- **Cari, arsip & favorit** — pencarian inbox, arsip pesan, dan pin alamat favorit ke paling atas
+- **Label & retensi** — beri nama/label tiap alamat, atur hapus pesan otomatis (1/7/30 hari), ekspor backup JSON
 
 ### Untuk developer
 - **API publik** — generate, inbox, baca/arsip/hapus pesan, blacklist, perpanjang, statistik
@@ -26,7 +39,7 @@ Layanan email sekali pakai (disposable email) — buka halaman, langsung dapat a
 Sambungkan domain pribadi via Cloudflare Email Routing — verifikasi TXT + MX, worker script siap salin, secret per-domain.
 
 ### Admin
-Panel admin: ringkasan, statistik, pengaturan web, domain, dan manajemen pengguna (tambah, suspend/aktifkan, reset password, hapus).
+Panel admin: dashboard + grafik trafik email, manajemen pengguna (tambah, suspend/aktifkan, reset password, hapus), domain kustom, broadcast pesan, monitor server (CPU/RAM/disk/uptime), maintenance mode, log aktivitas admin, dan blokir domain spam global.
 
 ## Cara kerja email masuk
 
@@ -49,6 +62,7 @@ Panduan lengkap worker (Bahasa Indonesia): [cloudflare-worker/README.md](cloudfl
 │   ├── api-zod/         # Skema validasi Zod (generated)
 │   └── api-client-react/# Client React (Orval, generated)
 ├── cloudflare-worker/   # Worker + panduan Email Routing
+├── releases/            # APK Android terbaru (tempmail-debug.apk)
 └── scripts/
     └── git-hooks/       # pre-commit hook anti-secret
 ```
