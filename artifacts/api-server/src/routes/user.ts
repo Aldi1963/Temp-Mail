@@ -99,7 +99,7 @@ router.get("/emails", async (req, res) => {
     .select()
     .from(emailAddressesTable)
     .where(eq(emailAddressesTable.userId, userId))
-    .orderBy(desc(emailAddressesTable.createdAt));
+    .orderBy(desc(emailAddressesTable.favorite), desc(emailAddressesTable.createdAt));
 
   const result = await Promise.all(
     emails.map(async (e) => {
@@ -108,6 +108,7 @@ router.get("/emails", async (req, res) => {
         email: e.email,
         domain: e.domain,
         label: e.label ?? null,
+        favorite: e.favorite,
         autoDeleteDays: e.autoDeleteDays ?? null,
         createdAt: e.createdAt,
         expiresAt: e.expiresAt,
@@ -503,6 +504,38 @@ router.delete("/blocked-senders/:id", requireAuth, async (req, res) => {
   }
   await db.delete(blockedSendersTable).where(eq(blockedSendersTable.id, id));
   res.json({ success: true });
+});
+
+// Tandai / batalkan alamat sebagai favorit. :id = alamat email (URL-encoded).
+router.patch("/addresses/:id", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  const address = decodeURIComponent(req.params.id).trim().toLowerCase();
+  const { favorite } = req.body ?? {};
+
+  if (typeof favorite !== "boolean") {
+    res.status(400).json({ error: "Bad request", message: "favorite harus boolean." });
+    return;
+  }
+
+  const [row] = await db
+    .select()
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.email, address))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found", message: "Alamat tidak ditemukan." });
+    return;
+  }
+  if (row.userId !== userId) {
+    res.status(403).json({ error: "Forbidden", message: "Alamat ini bukan milik akun Anda." });
+    return;
+  }
+
+  await db
+    .update(emailAddressesTable)
+    .set({ favorite })
+    .where(eq(emailAddressesTable.email, address));
+  res.json({ email: address, favorite });
 });
 
 export { router as userRouter };
