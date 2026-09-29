@@ -15,6 +15,7 @@ import {
   Zap,
   LockKeyhole,
   Send,
+  ShieldX,
   Webhook,
   X,
 } from "lucide-react";
@@ -139,6 +140,12 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       label: "Developer",
       desc: "Webhook & API key",
       action: () => onOpenPage("developer"),
+    },
+    {
+      icon: ShieldX,
+      label: "Blokir Pengirim",
+      desc: "Sembunyikan pesan dari pengirim tertentu",
+      action: () => onOpenPage("blocked-senders"),
     },
     {
       icon: Info,

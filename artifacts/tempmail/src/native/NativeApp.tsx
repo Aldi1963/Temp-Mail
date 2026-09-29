@@ -23,6 +23,7 @@ import { NativePrivacyPage } from "./NativePrivacyPage";
 import { TrashPage } from "./TrashPage";
 import { TelegramSettings } from "./TelegramSettings";
 import { NativeDeveloperPage } from "./NativeDeveloperPage";
+import { BlockedSenders } from "./BlockedSenders";
 import { initPushNotifications, refreshPushRegistration } from "./push";
 
 export type NativePage =
@@ -32,7 +33,8 @@ export type NativePage =
   | "privacy"
   | "trash"
   | "telegram"
-  | "developer";
+  | "developer"
+  | "blocked-senders";
 
 const PAGE_TITLES: Record<NativePage, string> = {
   "api-docs": "Dokumentasi API",
@@ -42,6 +44,7 @@ const PAGE_TITLES: Record<NativePage, string> = {
   trash: "Tong Sampah",
   telegram: "Telegram",
   developer: "Developer",
+  "blocked-senders": "Blokir Pengirim",
 };
 
 // Pola scroll: dokumen yang scroll (bukan container bersarang) agar mulus
@@ -246,6 +249,9 @@ function NativeAppInner() {
             {page === "telegram" && <TelegramSettings onOpenLogin={() => setLoginOpen(true)} />}
             {page === "developer" && (
               <NativeDeveloperPage onOpenLogin={() => setLoginOpen(true)} />
+            )}
+            {page === "blocked-senders" && (
+              <BlockedSenders onOpenLogin={() => setLoginOpen(true)} />
             )}
           </SubPage>
         )}
