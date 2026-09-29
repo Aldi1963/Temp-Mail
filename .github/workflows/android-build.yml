@@ -53,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build workspace dependencies
+        run: pnpm --filter @aldi1963/temp-mail-api-client... run build
+
       - name: Build web untuk native
         run: |
           cd artifacts/tempmail
