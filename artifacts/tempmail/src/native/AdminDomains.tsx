@@ -50,6 +50,9 @@ export function AdminDomains() {
   const [showSecret, setShowSecret] = useState<Record<number, boolean>>({});
   const [copied, setCopied] = useState<string | null>(null);
   const [busyDel, setBusyDel] = useState<number | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [scripts, setScripts] = useState<Record<number, string>>({});
+  const [loadingScript, setLoadingScript] = useState<Record<number, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +61,7 @@ export function AdminDomains() {
       const res = await nativeFetch<DomainListRes>("/api/user/domains");
       setDomains(res.domains);
       setMaxPerUser(res.maxPerUser);
+      setWebhookUrl(res.webhookUrl ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Gagal memuat domain.");
     } finally {
@@ -114,6 +118,21 @@ export function AdminDomains() {
       toast({ title: "Verifikasi gagal", description: err(e), variant: "destructive" });
     } finally {
       setVerifyingId(null);
+    }
+  };
+
+  const loadScript = async (d: CustomDomain) => {
+    if (scripts[d.id] || loadingScript[d.id]) return;
+    setLoadingScript((prev) => ({ ...prev, [d.id]: true }));
+    try {
+      const res = await nativeFetch<{ script: string }>(
+        `/api/user/domains/${d.id}/worker-script`
+      );
+      setScripts((prev) => ({ ...prev, [d.id]: res.script }));
+    } catch (e) {
+      toast({ title: "Gagal memuat script worker.", description: err(e), variant: "destructive" });
+    } finally {
+      setLoadingScript((prev) => ({ ...prev, [d.id]: false }));
     }
   };
 
@@ -210,27 +229,106 @@ export function AdminDomains() {
               </div>
 
               {!active && (
-                <div className="rounded-xl bg-muted/60 p-3 space-y-2.5">
-                  <p className="text-[12.5px] font-extrabold">Langkah verifikasi DNS</p>
-                  <div>
-                    <p className="text-[12px] text-muted-foreground">
-                      1. TXT record{" "}
-                      <span className="font-mono text-foreground">
-                        _tempmail-verify.{d.domain}
-                      </span>
-                    </p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <code className="flex-1 min-w-0 font-mono text-[11px] break-all bg-background rounded-lg px-2 py-2 border border-border/60">
-                        {d.verificationToken}
-                      </code>
-                      {copyBtn(`tok:${d.id}`, d.verificationToken, "Token verifikasi")}
+                <div className="rounded-xl bg-muted/60 p-3 space-y-3">
+                  <p className="text-[12.5px] font-extrabold">Panduan verifikasi</p>
+
+                  <div className="flex gap-2.5">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center mt-0.5">1</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-bold">Verifikasi kepemilikan</p>
+                      <p className="text-[11.5px] text-muted-foreground">
+                        Tambahkan TXT record di DNS Anda — host{" "}
+                        <span className="font-mono text-foreground">_tempmail-verify</span>, value:
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <code className="flex-1 min-w-0 font-mono text-[11px] break-all bg-background rounded-lg px-2 py-2 border border-border/60">
+                          {d.verificationToken}
+                        </code>
+                        {copyBtn(`tok:${d.id}`, d.verificationToken, "Token verifikasi")}
+                      </div>
                     </div>
                   </div>
-                  <p className="text-[12px] text-muted-foreground">
-                    2. MX record ke{" "}
-                    <span className="font-mono text-foreground">mx.cloudflare.net</span>{" "}
-                    (via Cloudflare Email Routing)
-                  </p>
+
+                  <div className="flex gap-2.5">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center mt-0.5">2</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-bold">Arahkan MX ke Cloudflare</p>
+                      <p className="text-[11.5px] text-muted-foreground">
+                        Tambahkan 3 MX record ini (hapus MX lama bila ada):
+                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        {[
+                          ["10", "route1.mx.cloudflare.net"],
+                          ["20", "route2.mx.cloudflare.net"],
+                          ["30", "route3.mx.cloudflare.net"],
+                        ].map(([pri, host]) => (
+                          <div key={host} className="flex items-center gap-2">
+                            <span className="text-[11px] text-muted-foreground w-16 shrink-0">
+                              Prioritas {pri}
+                            </span>
+                            <code className="flex-1 min-w-0 font-mono text-[11px] break-all bg-background rounded-lg px-2 py-1.5 border border-border/60">
+                              {host}
+                            </code>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center mt-0.5">3</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-bold">Pasang Email Worker</p>
+                      <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                        Di Cloudflare: Workers &amp; Pages → Create Worker → Deploy → Edit code →
+                        tempel script di bawah → Deploy. Lalu Email → Email Routing → pilih domain
+                        → Routing rules → tambah rule catch-all dengan action "Send to Worker" ke
+                        worker ini.
+                      </p>
+                      {!scripts[d.id] ? (
+                        <button
+                          type="button"
+                          disabled={!!loadingScript[d.id]}
+                          onClick={() => void loadScript(d)}
+                          className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold rounded-xl px-3 py-2 bg-primary/10 text-primary active:scale-[0.97] disabled:opacity-50"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          {loadingScript[d.id] ? "Memuat..." : "Tampilkan script worker"}
+                        </button>
+                      ) : (
+                        <div className="mt-2 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            {copyBtn(`scr:${d.id}`, scripts[d.id], "Script worker")}
+                            <span className="text-[11px] text-muted-foreground">
+                              Script sudah terisi secret domain ini.
+                            </span>
+                          </div>
+                          <pre className="max-h-36 overflow-auto font-mono text-[10px] leading-relaxed bg-background rounded-lg border border-border/60 p-2 whitespace-pre-wrap break-all">
+                            {scripts[d.id].slice(0, 1200)}
+                            {scripts[d.id].length > 1200 ? "\n…" : ""}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-extrabold flex items-center justify-center mt-0.5">4</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-bold">Verifikasi</p>
+                      <p className="text-[11.5px] text-muted-foreground">
+                        Tunggu DNS menyebar (±5 menit), lalu klik tombol "Verifikasi" di bawah.
+                      </p>
+                    </div>
+                  </div>
+
+                  {webhookUrl && (
+                    <p className="text-[11px] text-muted-foreground border-t border-border/50 pt-2">
+                      Webhook URL: <span className="font-mono break-all">{webhookUrl}</span> —
+                      secret worker sudah tersimpan otomatis di script.
+                    </p>
+                  )}
+
                   {vm && (
                     <p className="text-[11.5px] font-bold">
                       TXT:{" "}
