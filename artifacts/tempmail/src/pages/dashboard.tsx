@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Mail, Inbox, Clock, MailOpen, RefreshCw, User, ShieldCheck,
   Code2, UserCircle, LayoutDashboard, LogOut, Menu, X, Home,
   LogIn, KeyRound, ShieldPlus, ShieldOff, UserPlus, Activity, Sun, Moon,
-  Search, Pencil, Copy, Trash2, Check
+  Search, Pencil, Copy, Trash2, Check, Star
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +31,7 @@ import { id as idLocale } from "date-fns/locale";
 import { API_BASE_URL as BASE } from "../lib/api-base";
 
 interface UserEmail {
+  id?: number | string;
   email: string;
   domain: string;
   label: string | null;
@@ -38,6 +39,7 @@ interface UserEmail {
   expiresAt: string;
   isExpired: boolean;
   messageCount: number;
+  favorite?: boolean;
 }
 
 interface UserStats {
@@ -131,9 +133,13 @@ export default function DashboardPage() {
   const filteredEmails = q
     ? emails.filter((e) => e.email.toLowerCase().includes(q) || (e.label ?? "").toLowerCase().includes(q))
     : emails;
-  const emailTotalPages = Math.max(1, Math.ceil(filteredEmails.length / EMAIL_PAGE_SIZE));
+  const sortedEmails = useMemo(
+    () => [...filteredEmails].sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite)),
+    [filteredEmails]
+  );
+  const emailTotalPages = Math.max(1, Math.ceil(sortedEmails.length / EMAIL_PAGE_SIZE));
   const safeEmailPage = Math.min(emailPage, emailTotalPages);
-  const pagedEmails = filteredEmails.slice((safeEmailPage - 1) * EMAIL_PAGE_SIZE, safeEmailPage * EMAIL_PAGE_SIZE);
+  const pagedEmails = sortedEmails.slice((safeEmailPage - 1) * EMAIL_PAGE_SIZE, safeEmailPage * EMAIL_PAGE_SIZE);
   const allPagedSelected = pagedEmails.length > 0 && pagedEmails.every((e) => selectedEmails.includes(e.email));
 
   const toggleSelect = (email: string) =>
@@ -175,6 +181,31 @@ export default function DashboardPage() {
       toast({ title: "Gagal menyimpan label.", description: err instanceof Error ? err.message : "", variant: "destructive" });
     } finally {
       setSavingLabel(false);
+    }
+  };
+
+  const [favLoading, setFavLoading] = useState<string | null>(null);
+
+  const toggleFavorite = async (target: UserEmail) => {
+    const next = !target.favorite;
+    const addrId = encodeURIComponent(String(target.id ?? target.email));
+    setFavLoading(target.email);
+    setEmails((prev) => prev.map((x) => (x.email === target.email ? { ...x, favorite: next } : x)));
+    try {
+      const r = await fetch(`${BASE}/api/user/addresses/${addrId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite: next }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.message || "Gagal mengubah favorit.");
+      toast({ title: next ? "Alamat ditandai favorit." : "Tanda favorit dihapus." });
+    } catch (err) {
+      setEmails((prev) => prev.map((x) => (x.email === target.email ? { ...x, favorite: !next } : x)));
+      toast({ title: "Gagal mengubah favorit.", description: err instanceof Error ? err.message : "", variant: "destructive" });
+    } finally {
+      setFavLoading(null);
     }
   };
 
@@ -698,6 +729,16 @@ export default function DashboardPage() {
                         >
                           {e.isExpired ? "Kadaluarsa" : "Aktif"}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => toggleFavorite(e)}
+                          disabled={favLoading === e.email}
+                          title={e.favorite ? "Hapus dari favorit" : "Tandai sebagai favorit"}
+                        >
+                          <Star className={`h-3.5 w-3.5 ${e.favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyEmail(e.email)} title="Salin alamat">
                           {copiedEmail === e.email ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
                         </Button>
