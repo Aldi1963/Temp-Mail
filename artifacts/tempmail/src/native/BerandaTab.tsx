@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   CheckCheck,
@@ -13,6 +13,7 @@ import {
   Pencil,
   QrCode,
   RefreshCw,
+  Search,
   Sun,
   Trash2,
   X,
@@ -84,6 +85,10 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
   const [qrOpen, setQrOpen] = useState(false);
   const [confirmDestroy, setConfirmDestroy] = useState(false);
   const [extending, setExtending] = useState(false);
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<NativeMsg[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [addressId, setAddressId] = useState<string | number | null>(null);
   const dark = theme === "dark";
   const messages = (mailbox.inbox?.messages ?? []) as unknown as NativeMsg[];
 
@@ -182,6 +187,73 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
 
   const [local, domain] = (mailbox.activeEmail ?? "").split("@");
   const total = messages.length;
+
+  // Cari addressId alamat aktif (dibutuhkan endpoint pencarian server).
+  useEffect(() => {
+    if (!user || !mailbox.activeEmail) {
+      setAddressId(null);
+      return;
+    }
+    let cancelled = false;
+    nativeFetch<{ emails?: { id?: number | string; addressId?: number | string; email: string }[] }>(
+      "/api/user/emails"
+    )
+      .then((d) => {
+        if (cancelled) return;
+        const hit = (d?.emails ?? []).find((e) => e.email === mailbox.activeEmail);
+        setAddressId(hit ? ((hit.id ?? hit.addressId) as number | string | undefined) ?? null : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAddressId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, mailbox.activeEmail]);
+
+  // Pencarian ter-debounce: server bila addressId ada, else filter lokal.
+  useEffect(() => {
+    const query = q.trim();
+    if (!query) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+    if (!addressId) {
+      const lq = query.toLowerCase();
+      setResults(
+        messages.filter((m) =>
+          `${m.from ?? ""} ${m.subject ?? ""} ${m.preview ?? ""}`.toLowerCase().includes(lq)
+        )
+      );
+      return;
+    }
+    setSearching(true);
+    const t = window.setTimeout(() => {
+      nativeFetch<{ messages?: any[] } | any[]>(
+        `/api/user/addresses/${encodeURIComponent(String(addressId))}/messages?q=${encodeURIComponent(query)}`
+      )
+        .then((d) => {
+          const arr = Array.isArray(d) ? d : (d?.messages ?? []);
+          setResults(
+            arr.map((m: any) => ({
+              id: String(m?.id ?? ""),
+              from: String(m?.from ?? m?.fromAddress ?? ""),
+              subject: m?.subject ?? null,
+              preview: m?.preview ?? null,
+              receivedAt: m?.receivedAt ?? new Date().toISOString(),
+              isRead: m?.isRead ?? true,
+              hasAttachments: m?.hasAttachments ?? null,
+            })) as NativeMsg[]
+          );
+        })
+        .catch(() => setResults(null))
+        .finally(() => setSearching(false));
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [q, addressId, messages]);
+
+  const shownMessages = results ?? messages;
 
   return (
     <div>
@@ -463,6 +535,34 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
 
       {/* Pesan masuk */}
       <div className="mt-5 pb-6">
+        <div className="px-4 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={addressId ? "Cari pesan di server…" : "Cari pengirim, subjek, isi…"}
+              className="w-full rounded-xl bg-muted/60 border border-transparent focus:border-primary/40 outline-none pl-9 pr-9 py-2 text-[13px] placeholder:text-muted-foreground"
+            />
+            {searching && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-muted-foreground/30 border-t-primary animate-spin" />
+            )}
+            {!searching && q !== "" && (
+              <button
+                aria-label="Hapus pencarian"
+                onClick={() => setQ("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground active:bg-muted"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {results !== null && (
+            <p className="text-[11px] text-muted-foreground mt-1.5 px-0.5">
+              {results.length} hasil{addressId ? " dari server" : ""} untuk &ldquo;{q.trim()}&rdquo;
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2 pl-4 pr-2 mb-1">
           <h3 className="text-[14px] font-extrabold flex-1">Pesan Masuk</h3>
           {mailbox.unreadCount > 0 && (
@@ -488,7 +588,7 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
           </button>
         </div>
         <NativeInboxList
-          messages={messages}
+          messages={shownMessages}
           loading={mailbox.inboxLoading}
           email={mailbox.activeEmail ?? ""}
           onSelect={onSelectMessage}

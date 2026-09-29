@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Search, Trash2, X } from "lucide-react";
+import { Check, Copy, Trash2 } from "lucide-react";
 import { getGetInboxQueryKey } from "@aldi1963/temp-mail-api-client";
 import { cn } from "@/lib/utils";
 import { nativeFetch, manageHeaders } from "./api";
@@ -39,7 +39,6 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const { toast } = useToast();
   const [copiedEmail, setCopiedEmail] = useState(false);
-  const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<MsgFilter>("semua");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -54,19 +53,14 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
   );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return messages.filter((m) => {
       if (filter === "unread" && m.isRead) return false;
       if (filter === "otp" && !extractQuickOtp(`${m.subject ?? ""} ${m.preview ?? ""}`))
         return false;
       if (filter === "attachment" && !m.hasAttachments) return false;
-      if (q) {
-        const hay = `${m.from ?? ""} ${m.subject ?? ""} ${m.preview ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
       return true;
     });
-  }, [messages, query, filter]);
+  }, [messages, filter]);
 
   const copyOtp = async (e: React.MouseEvent, id: string, otp: string) => {
     e.stopPropagation();
@@ -215,25 +209,7 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
   return (
     <div>
       <div className="px-4 pt-1 pb-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari pengirim, subjek, isi…"
-            className="w-full rounded-xl bg-muted/60 border border-transparent focus:border-primary/40 outline-none pl-9 pr-9 py-2 text-[13px] placeholder:text-muted-foreground"
-          />
-          {query !== "" && (
-            <button
-              aria-label="Hapus pencarian"
-              onClick={() => setQuery("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground active:bg-muted"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        <div className="flex gap-1.5 mt-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           {FILTERS.map((f) => (
             <button
               key={f.key}
