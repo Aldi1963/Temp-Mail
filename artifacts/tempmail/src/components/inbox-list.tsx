@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import {
   Search, Mail, MailOpen, AlertCircle, RefreshCw, CheckCheck,
   ArrowUpDown, Bell, BellOff, KeyRound, Copy, Check, Star, Trash2,
-  Archive, ArchiveRestore
+  Archive, ArchiveRestore, X
 } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
@@ -482,6 +482,80 @@ export function InboxList({
     if (showArchived) void fetchArchived();
   }, [showArchived]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Cari pesan: kirim q ke endpoint kontrak, fallback filter lokal ──
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const archivedRef = useRef(archivedMsgs);
+  archivedRef.current = archivedMsgs;
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<EmailMessageSummary[] | null>(null);
+
+  const toSummary = (m: any): EmailMessageSummary => ({
+    id: String(m.id ?? ""),
+    from: String(m.from ?? m.fromAddress ?? ""),
+    subject: String(m.subject ?? ""),
+    preview: String(m.preview ?? ""),
+    receivedAt: String(m.receivedAt ?? m.received_at ?? new Date().toISOString()),
+    isRead: !!m.isRead,
+    hasAttachments: !!m.hasAttachments,
+  });
+
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        if (!showArchived && email) {
+          const data = await userFetch(
+            `/api/user/addresses/${encodeURIComponent(email)}/messages?q=${encodeURIComponent(q)}`
+          );
+          const raw = Array.isArray(data)
+            ? data
+            : Array.isArray((data as any)?.messages)
+              ? (data as any).messages
+              : null;
+          if (!cancelled && raw) {
+            setSearchResults(raw.map(toSummary));
+            return;
+          }
+        }
+        throw new Error("pakai filter lokal");
+      } catch {
+        if (cancelled) return;
+        const pool = showArchived ? archivedRef.current : messagesRef.current;
+        const lq = q.toLowerCase();
+        setSearchResults(
+          pool.filter(
+            (m) =>
+              (m.subject || "").toLowerCase().includes(lq) ||
+              (m.from || "").toLowerCase().includes(lq) ||
+              (m.preview || "").toLowerCase().includes(lq)
+          )
+        );
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, showArchived, email]);
+
+  const pruneSearch = (id: string) =>
+    setSearchResults((prev) => (prev ? prev.filter((m) => m.id !== id) : prev));
+
+  const searchActive = searchResults !== null;
+  const listMessages = searchActive ? (searchResults as EmailMessageSummary[]) : visibleMessages;
+  const listLoading = searching ? true : visibleLoading;
+
   // Aksi swipe menunggu konfirmasi dialog dulu
   const [pendingAction, setPendingAction] = useState<{ id: string; dir: 1 | -1 } | null>(null);
 
@@ -489,7 +563,7 @@ export function InboxList({
     setPendingAction({ id, dir });
   };
 
-  const pendingMsg = pendingAction ? visibleMessages.find((m) => m.id === pendingAction.id) ?? null : null;
+  const pendingMsg = pendingAction ? listMessages.find((m) => m.id === pendingAction.id) ?? null : null;
   const pendingKind: "archive" | "unarchive" | "delete" | null = !pendingAction
     ? null
     : pendingAction.dir === 1
@@ -520,6 +594,7 @@ export function InboxList({
       } else {
         onRefresh?.();
       }
+      pruneSearch(id);
       if (id === selectedMessageId) onDeselectMessage?.();
       toast({
         title: toArchived ? "Pesan diarsipkan" : "Pesan dikembalikan",
@@ -546,6 +621,7 @@ export function InboxList({
       } else {
         onRefresh?.();
       }
+      pruneSearch(id);
       if (id === selectedMessageId) onDeselectMessage?.();
       toast({ title: "Pesan dihapus" });
     } catch (e) {
@@ -637,8 +713,42 @@ export function InboxList({
         </div>
       </div>
 
+      {/* Cari pesan */}
+      <div className="px-3 sm:px-4 pt-1 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cari pesan..."
+            className="h-8 pl-8 pr-8 text-xs"
+            aria-label="Cari pesan"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              title="Hapus pencarian"
+              aria-label="Hapus pencarian"
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        {searchActive && (
+          <p className="text-[11px] text-muted-foreground mt-1.5 px-0.5 truncate">
+            {searching ? (
+              "Mencari..."
+            ) : (
+              <>Hasil untuk <span className="font-semibold text-foreground">"{search.trim()}"</span> — {listMessages.length} pesan</>
+            )}
+          </p>
+        )}
+      </div>
+
       <ScrollArea className="flex-1 w-full max-w-full overflow-hidden">
-        {visibleLoading ? (
+        {listLoading ? (
           <div className="p-4 space-y-4">
             {[1, 2, 3].map((i) => (
               <div key={i} className="animate-pulse flex items-center gap-3 py-2">
@@ -650,23 +760,30 @@ export function InboxList({
               </div>
             ))}
           </div>
-        ) : visibleMessages.length === 0 ? (
+        ) : listMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[260px] text-center px-4">
             <div className="bg-primary/10 p-4 rounded-full mb-3 text-primary border border-primary/20">
-              {showArchived ? <Archive className="h-7 w-7" /> : <Mail className="h-7 w-7 animate-pulse" />}
+              {searchActive ? <Search className="h-7 w-7" /> : showArchived ? <Archive className="h-7 w-7" /> : <Mail className="h-7 w-7 animate-pulse" />}
             </div>
             <h3 className="text-sm font-semibold text-foreground">
-              {showArchived ? "Arsip kosong" : "Menunggu email masuk..."}
+              {searchActive ? "Tidak ada hasil" : showArchived ? "Arsip kosong" : "Menunggu email masuk..."}
             </h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
-              {showArchived
-                ? "Geser pesan ke kanan untuk mengarsipkannya."
-                : "Email yang dikirim ke alamat di atas akan muncul otomatis di sini tanpa reload."}
+              {searchActive
+                ? <>Tidak ada pesan yang cocok dengan <span className="font-semibold text-foreground">"{search.trim()}"</span>.</>
+                : showArchived
+                  ? "Geser pesan ke kanan untuk mengarsipkannya."
+                  : "Email yang dikirim ke alamat di atas akan muncul otomatis di sini tanpa reload."}
             </p>
+            {searchActive && (
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => setSearch("")}>
+                Hapus pencarian
+              </Button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-border/40">
-            {visibleMessages.map((msg) => (
+            {listMessages.map((msg) => (
               <SwipeableInboxRow
                 key={msg.id}
                 msg={msg}
