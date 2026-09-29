@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, createHmac } from "crypto";
 import { db } from "@workspace/db";
 import { usersTable, userTwoFactorTable, activityLogsTable, emailVerificationTokensTable, nativeTokensTable } from "@workspace/db";
 import { eq, count, and, gt, isNull } from "drizzle-orm";
@@ -147,6 +147,10 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
 
   const user = results[0];
+  if (!user.passwordHash) {
+    res.status(401).json({ error: "Unauthorized", message: "Akun ini memakai login Google. Masuk dengan tombol Google." });
+    return;
+  }
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     res.status(401).json({ error: "Unauthorized", message: "Email atau password salah." });
@@ -230,6 +234,10 @@ router.post("/native-token", nativeTokenLimiter, async (req, res) => {
   }
 
   const user = results[0];
+  if (!user.passwordHash) {
+    res.status(401).json({ error: "Unauthorized", message: "Akun ini memakai login Google. Masuk dengan tombol Google." });
+    return;
+  }
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     res.status(401).json({ error: "Unauthorized", message: "Email atau password salah." });
@@ -574,6 +582,10 @@ router.post("/change-password", requireAuth, async (req, res) => {
     .limit(1);
   const user = users[0];
 
+  if (!user.passwordHash) {
+    res.status(400).json({ error: "Bad request", message: "Akun Google belum punya password." });
+    return;
+  }
   const valid = await bcrypt.compare(currentPassword, user.passwordHash);
   if (!valid) {
     res.status(401).json({ error: "Unauthorized", message: "Password lama tidak cocok." });
@@ -586,6 +598,246 @@ router.post("/change-password", requireAuth, async (req, res) => {
   await logActivity(userId, "password_changed", "Password akun berhasil diubah");
 
   res.json({ success: true, message: "Password berhasil diubah." });
+});
+
+// ─── GOOGLE OAUTH ─────────────────────────────────────────────────────────
+// Alur: GET /api/auth/google?mode=native|web → redirect ke Google →
+// callback tukar code → profil → cari/buat user →
+//   mode=native: buat native token, redirect ke deep link aplikasi
+//   mode=web:    set sesi cookie, redirect ke /tempmail/
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
+const NATIVE_OAUTH_DEEPLINK = "com.clipku.tempmail://oauth/google";
+
+function googleConfigured(): boolean {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+function googleRedirectUri(): string {
+  return (
+    process.env.GOOGLE_REDIRECT_URI ||
+    "https://m.clipku.com/tempmail/api/auth/google/callback"
+  );
+}
+
+// State anti-CSRF stateless: payload.base64url + HMAC-SHA256(payload, SESSION_SECRET).
+function signOAuthState(mode: string): string {
+  const secret = process.env.SESSION_SECRET || "tempmail-dev-secret";
+  const payload = Buffer.from(
+    JSON.stringify({ m: mode, n: randomBytes(16).toString("hex"), t: Date.now() })
+  ).toString("base64url");
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifyOAuthState(state: string): { m: string } | null {
+  try {
+    const secret = process.env.SESSION_SECRET || "tempmail-dev-secret";
+    const [payload, sig] = state.split(".");
+    if (!payload || !sig) return null;
+    const expected = createHmac("sha256", secret).update(payload).digest("base64url");
+    if (sig.length !== expected.length) return null;
+    let diff = 0;
+    for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+    if (diff !== 0) return null;
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (typeof data.m !== "string" || typeof data.t !== "number") return null;
+    if (Date.now() - data.t > 10 * 60 * 1000) return null; // kedaluwarsa 10 menit
+    return { m: data.m };
+  } catch {
+    return null;
+  }
+}
+
+const googleLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too Many Requests",
+    message: "Terlalu banyak percobaan. Coba lagi dalam 15 menit.",
+  },
+});
+
+// Status provider login pihak ketiga (dipakai aplikasi untuk show/hide tombol).
+router.get("/providers", (_req, res) => {
+  res.json({ google: googleConfigured() });
+});
+
+router.get("/google", googleLimiter, (req, res) => {
+  if (!googleConfigured()) {
+    res.status(503).json({
+      error: "Service Unavailable",
+      message: "Login Google belum dikonfigurasi di server.",
+    });
+    return;
+  }
+  const mode = req.query.mode === "native" ? "native" : "web";
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID as string,
+    redirect_uri: googleRedirectUri(),
+    response_type: "code",
+    scope: "openid email profile",
+    state: signOAuthState(mode),
+    prompt: "select_account",
+  });
+  res.redirect(302, `${GOOGLE_AUTH_URL}?${params.toString()}`);
+});
+
+router.get("/google/callback", googleLimiter, async (req, res) => {
+  const fail = (mode: string, message: string) => {
+    if (mode === "native") {
+      res.redirect(
+        302,
+        `${NATIVE_OAUTH_DEEPLINK}?error=${encodeURIComponent(message)}`
+      );
+    } else {
+      res
+        .status(400)
+        .send(
+          `<html><body style="font-family:sans-serif;padding:40px"><h3>Login Google gagal</h3><p>${message.replace(/</g, "&lt;")}</p></body></html>`
+        );
+    }
+  };
+  try {
+    if (!googleConfigured()) {
+      fail("web", "Login Google belum dikonfigurasi di server.");
+      return;
+    }
+    const { code, state } = req.query as { code?: string; state?: string };
+    const verified = typeof state === "string" ? verifyOAuthState(state) : null;
+    if (!code || !verified) {
+      fail("web", "Sesi login tidak valid atau kedaluwarsa. Silakan ulangi.");
+      return;
+    }
+    const mode = verified.m;
+
+    // Tukar authorization code dengan access token.
+    const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID as string,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET as string,
+        redirect_uri: googleRedirectUri(),
+        grant_type: "authorization_code",
+      }),
+    });
+    if (!tokenRes.ok) {
+      fail(mode, "Gagal menukar kode otorisasi Google.");
+      return;
+    }
+    const tokenData = (await tokenRes.json()) as { access_token?: string };
+    if (!tokenData.access_token) {
+      fail(mode, "Token Google tidak diterima.");
+      return;
+    }
+
+    // Ambil profil Google.
+    const meRes = await fetch(GOOGLE_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    if (!meRes.ok) {
+      fail(mode, "Gagal membaca profil Google.");
+      return;
+    }
+    const profile = (await meRes.json()) as {
+      sub?: string;
+      email?: string;
+      name?: string;
+    };
+    if (!profile.sub || !profile.email) {
+      fail(mode, "Profil Google tidak lengkap.");
+      return;
+    }
+    const email = profile.email.toLowerCase().trim();
+
+    // Cari user: cocokkan googleId dulu, lalu email (tautkan bila cocok).
+    let user = (
+      await db.select().from(usersTable).where(eq(usersTable.googleId, profile.sub)).limit(1)
+    )[0];
+    if (!user) {
+      const byEmail = (
+        await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1)
+      )[0];
+      if (byEmail) {
+        if (!byEmail.googleId) {
+          await db
+            .update(usersTable)
+            .set({ googleId: profile.sub, emailVerified: true })
+            .where(eq(usersTable.id, byEmail.id));
+          user = { ...byEmail, googleId: profile.sub, emailVerified: true };
+          await logActivity(user.id, "link_google", "Akun Google ditautkan");
+        } else if (byEmail.googleId !== profile.sub) {
+          fail(mode, "Email ini sudah terhubung ke akun Google lain.");
+          return;
+        } else {
+          user = byEmail;
+        }
+      }
+    }
+    if (!user) {
+      const inserted = await db
+        .insert(usersTable)
+        .values({
+          email,
+          passwordHash: null,
+          googleId: profile.sub,
+          emailVerified: true,
+          role: "user",
+        })
+        .returning();
+      user = inserted[0];
+      await logActivity(user.id, "register_google", "Akun dibuat via login Google");
+    }
+
+    if (user.suspended) {
+      fail(mode, "Akun dinonaktifkan. Hubungi administrator.");
+      return;
+    }
+
+    // 2FA belum didukung di alur Google: tolak dengan pesan jelas.
+    const tfa = await db
+      .select()
+      .from(userTwoFactorTable)
+      .where(eq(userTwoFactorTable.userId, user.id))
+      .limit(1);
+    if (tfa.length > 0 && tfa[0].enabled) {
+      fail(mode, "Akun memakai 2FA. Nonaktifkan 2FA di web sebelum memakai login Google.");
+      return;
+    }
+
+    await logActivity(user.id, "login_google", "Login via Google berhasil");
+
+    if (mode === "native") {
+      const rawToken = `tm_${randomBytes(32).toString("hex")}`;
+      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      await db.insert(nativeTokensTable).values({
+        userId: user.id,
+        tokenHash: hashNativeToken(rawToken),
+        name: "android-google",
+        expiresAt,
+      });
+      await logActivity(user.id, "native_token_created", "Token aplikasi Android dibuat via Google");
+      const params = new URLSearchParams({
+        token: rawToken,
+        email: user.email,
+        uid: String(user.id),
+      });
+      res.redirect(302, `${NATIVE_OAUTH_DEEPLINK}?${params.toString()}`);
+      return;
+    }
+
+    req.session.userId = user.id;
+    req.session.userRole = user.role;
+    res.redirect(302, "/tempmail/");
+  } catch (err) {
+    console.error("Google OAuth callback error:", err);
+    fail("web", "Terjadi kesalahan saat login Google.");
+  }
 });
 
 export { router as authRouter };
