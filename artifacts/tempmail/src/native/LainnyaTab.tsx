@@ -14,6 +14,7 @@ import {
   Trash2,
   Zap,
   LockKeyhole,
+  Send,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -125,6 +126,12 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       label: "Tong Sampah",
       desc: "Pesan terhapus, bisa dikembalikan",
       action: () => onOpenPage("trash"),
+    },
+    {
+      icon: Send,
+      label: "Telegram",
+      desc: "Pesan diteruskan otomatis ke Telegram",
+      action: () => onOpenPage("telegram"),
     },
     {
       icon: Info,
