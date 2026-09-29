@@ -159,6 +159,14 @@ function NativeAppInner() {
   const openPage = useCallback((p: NativePage) => setPage(p), []);
   const closePage = useCallback(() => setPage(null), []);
 
+  // Sub-menu lokal (mis. di tab Lainnya) yang harus ditutup dulu oleh tombol
+  // back HP sebelum pindah tab. Komponen anak mendaftarkan fungsi penutupnya
+  // lewat prop registerSubMenuCloser; fungsi mengembalikan true bila menangani.
+  const subMenuCloserRef = useRef<(() => boolean) | null>(null);
+  const registerSubMenuCloser = useCallback((fn: (() => boolean) | null) => {
+    subMenuCloserRef.current = fn;
+  }, []);
+
   // Kunci scroll dokumen saat overlay fullscreen terbuka.
   const overlayOpen = !!messageId || loginOpen || accountOpen;
   useEffect(() => {
@@ -171,7 +179,7 @@ function NativeAppInner() {
   }, [overlayOpen]);
 
   // Tombol back HP: jangan langsung keluar aplikasi.
-  // Prioritas: pesan → subpage → login → tab beranda → tekan 2x untuk keluar.
+  // Prioritas: pesan → login/akun → halaman → sub-menu → tab beranda → tekan 2x untuk keluar.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     let lastBack = 0;
@@ -191,6 +199,9 @@ function NativeAppInner() {
       }
       if (page) {
         setPage(null);
+        return;
+      }
+      if (subMenuCloserRef.current?.()) {
         return;
       }
       if (tab !== "beranda") {
@@ -235,7 +246,7 @@ function NativeAppInner() {
             )}
             {tab === "alamat" && <AlamatTab mailbox={mailbox} />}
             {tab === "lainnya" && (
-              <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} pinFlash={pinFlash} />
+              <LainnyaTab onOpenPage={openPage} onOpenLogin={() => setLoginOpen(true)} pinFlash={pinFlash} registerSubMenuCloser={registerSubMenuCloser} />
             )}
             {tab === "admin" && isAdmin && <AdminTab />}
           </>

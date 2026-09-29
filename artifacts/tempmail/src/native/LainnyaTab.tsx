@@ -37,6 +37,7 @@ interface Props {
   onOpenPage: (p: NativePage) => void;
   onOpenLogin: () => void;
   pinFlash?: number;
+  registerSubMenuCloser: (fn: (() => boolean) | null) => void;
 }
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: () => void; label: string }) {
@@ -151,7 +152,7 @@ function SubHeader({
 type PinFlow = "setup" | "confirm" | "disable" | null;
 type SubMenu = "akun" | "pengaturan" | "integrasi" | "pesan" | "bantuan" | null;
 
-export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
+export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash, registerSubMenuCloser }: Props) {
   const { user, logout } = useNativeAuth();
   const { theme, setTheme } = useTheme();
   const { settings, patch } = useNativeSettings();
@@ -178,6 +179,26 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash }: Props) {
       window.clearTimeout(t2);
     };
   }, [pinFlash]);
+
+  // Daftarkan penutup sub-menu ke handler tombol back HP:
+  // back dari sub-menu / panel PIN kembali ke daftar menu dulu,
+  // bukan langsung loncat ke Beranda.
+  useEffect(() => {
+    registerSubMenuCloser(() => {
+      if (pinFlow) {
+        setPinFlow(null);
+        setPinError("");
+        setFirstPin("");
+        return true;
+      }
+      if (subMenu) {
+        setSubMenu(null);
+        return true;
+      }
+      return false;
+    });
+    return () => registerSubMenuCloser(null);
+  }, [registerSubMenuCloser, pinFlow, subMenu]);
   const dark = theme === "dark";
 
   const pinComplete = async (pin: string) => {
