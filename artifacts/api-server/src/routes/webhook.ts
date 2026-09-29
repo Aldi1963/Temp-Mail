@@ -8,6 +8,7 @@ import {
   activityLogsTable,
   usersTable,
   customDomainsTable,
+  telegramLinkTokensTable,
 } from "@workspace/db";
 import { eq, inArray, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
@@ -866,6 +867,44 @@ router.post("/telegram", async (req, res) => {
       `\u2022 Jangan pakai untuk akun penting (bank, dsb).`;
     await sendTg(chatId, help, homeKeyboard);
     return;
+  }
+
+  // Command: /start <token> — tautan akun web ke bot Telegram.
+  // Token dibuat dari POST /api/user/telegram/link (kedaluwarsa 15 menit,
+  // sekali pakai). Berhasil -> telegram_chat_id user diisi dari chat ini.
+  {
+    const startMatch = text.match(/^\/start\s+(\S+)/);
+    if (startMatch) {
+      const linkToken = startMatch[1];
+      try {
+        const rows = await db
+          .select()
+          .from(telegramLinkTokensTable)
+          .where(eq(telegramLinkTokensTable.token, linkToken))
+          .limit(1);
+        const tok = rows[0];
+        if (!tok || tok.usedAt || tok.expiresAt < new Date()) {
+          await sendTg(chatId, `❌ *Tautan tidak valid atau sudah kedaluwarsa.*\n\nBuat tautan baru dari aplikasi web lalu buka lagi.`, homeKeyboard);
+          return;
+        }
+        const tgUsername = msg.from?.username ? `@${msg.from.username}` : null;
+        await db
+          .update(usersTable)
+          .set({ telegramChatId: strChatId, telegramUsername: tgUsername })
+          .where(eq(usersTable.id, tok.userId));
+        await db
+          .update(telegramLinkTokensTable)
+          .set({ usedAt: new Date() })
+          .where(eq(telegramLinkTokensTable.id, tok.id));
+        await sendTg(chatId,
+          `✅ *Akun berhasil ditautkan!*\n\n` +
+          `Pesan baru yang masuk ke alamat email Anda akan otomatis diteruskan ke chat ini.`,
+          homeKeyboard);
+      } catch (e: any) {
+        await sendTg(chatId, `❌ Gagal menautkan akun: ${e?.message ?? e}`, homeKeyboard);
+      }
+      return;
+    }
   }
 
   // Command: /start atau Menu Utama

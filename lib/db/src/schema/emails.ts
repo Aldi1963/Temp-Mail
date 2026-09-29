@@ -9,6 +9,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("user"),
   emailVerified: boolean("email_verified").notNull().default(false),
   telegramChatId: text("telegram_chat_id"),
+  telegramUsername: text("telegram_username"),
   suspended: boolean("suspended").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -37,6 +38,8 @@ export const emailAddressesTable = pgTable("email_addresses", {
   label: text("label"),
   // Retensi hapus pesan otomatis (dalam hari). NULL = fitur mati.
   autoDeleteDays: integer("auto_delete_days"),
+  // Alamat favorit — ditampilkan paling atas di daftar.
+  favorite: boolean("favorite").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 }, (t) => [index("idx_email_addresses_expires_at").on(t.expiresAt)]);
@@ -158,6 +161,32 @@ export const broadcastsTable = pgTable("broadcasts", {
 });
 
 export type Broadcast = typeof broadcastsTable.$inferSelect;
+
+
+// Token tautan Telegram: user menautkan akun web ke bot lewat deep link
+// t.me/<bot>?start=<token>. Token kedaluwarsa 15 menit & sekali pakai.
+export const telegramLinkTokensTable = pgTable("telegram_link_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [index("idx_telegram_link_tokens_token").on(t.token)]);
+
+export type TelegramLinkToken = typeof telegramLinkTokensTable.$inferSelect;
+
+// Daftar domain yang diblokir admin — pembuatan alamat baru di domain
+// ini ditolak dengan 403.
+export const blockedDomainsTable = pgTable("blocked_domains", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull().unique(),
+  reason: text("reason"),
+  createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BlockedDomain = typeof blockedDomainsTable.$inferSelect;
 
 export const insertEmailAddressSchema = createInsertSchema(emailAddressesTable);
 export const insertMessageSchema = createInsertSchema(messagesTable);

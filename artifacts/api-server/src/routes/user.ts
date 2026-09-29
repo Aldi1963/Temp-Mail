@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { emailAddressesTable, messagesTable, activityLogsTable, usersTable } from "@workspace/db";
-import { eq, desc, count, and, isNull } from "drizzle-orm";
-import { createHash, timingSafeEqual } from "crypto";
+import { emailAddressesTable, messagesTable, activityLogsTable, usersTable,
+  telegramLinkTokensTable } from "@workspace/db";
+import { eq, desc, count, and, isNull, gt } from "drizzle-orm";
+import { createHash, timingSafeEqual, randomBytes } from "crypto";
 import { requireAuth, requireAuthOrApiKey } from "../lib/auth.js";
+import { siteSettingsTable } from "@workspace/db";
 
 const router = Router();
 
@@ -155,6 +157,75 @@ router.get("/activity", requireAuth, async (req, res) => {
       createdAt: l.createdAt,
     })),
   });
+});
+
+// --- Tautan Telegram (deep link bot) ------------------------------------------
+// Status tautan Telegram akun yang sedang login.
+router.get("/telegram", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  const [u] = await db
+    .select({ telegramChatId: usersTable.telegramChatId, telegramUsername: usersTable.telegramUsername })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  res.json({ linked: !!u?.telegramChatId, username: u?.telegramUsername ?? null });
+});
+
+// Buat deep link t.me/<bot>?start=<token> untuk menautkan akun ke bot Telegram.
+// Token kedaluwarsa 15 menit dan sekali pakai.
+router.post("/telegram/link", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+
+  const settingsRows = await db.select().from(siteSettingsTable);
+  const settingsMap: Record<string, string> = {};
+  for (const r of settingsRows) settingsMap[r.key] = r.value;
+  const tgToken = settingsMap.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!tgToken) {
+    res.status(503).json({
+      error: "Unavailable",
+      message: "Bot Telegram belum dikonfigurasi di server (butuh env TELEGRAM_BOT_TOKEN).",
+    });
+    return;
+  }
+
+  let botUsername: string | null = null;
+  try {
+    const meResp = await fetch(`https://api.telegram.org/bot${tgToken}/getMe`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    const meJson = (await meResp.json()) as { ok?: boolean; result?: { username?: string } };
+    botUsername = meJson?.result?.username ?? null;
+  } catch {
+    botUsername = null;
+  }
+  if (!botUsername) {
+    res.status(503).json({
+      error: "Unavailable",
+      message: "Gagal membaca identitas bot Telegram. Periksa TELEGRAM_BOT_TOKEN di server.",
+    });
+    return;
+  }
+
+  const token = randomBytes(24).toString("hex");
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+  // Hapus token lama yang belum dipakai agar hanya satu yang aktif.
+  await db.delete(telegramLinkTokensTable).where(eq(telegramLinkTokensTable.userId, userId));
+  await db.insert(telegramLinkTokensTable).values({ userId, token, expiresAt });
+
+  res.json({ url: `https://t.me/${botUsername}?start=${token}` });
+});
+
+// Putuskan tautan Telegram dari akun.
+router.delete("/telegram", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  await db
+    .update(usersTable)
+    .set({ telegramChatId: null, telegramUsername: null })
+    .where(eq(usersTable.id, userId));
+  await db.delete(telegramLinkTokensTable).where(eq(telegramLinkTokensTable.userId, userId));
+  res.json({ success: true, message: "Tautan Telegram berhasil diputus." });
 });
 
 // Update Telegram Chat ID for logged in user
