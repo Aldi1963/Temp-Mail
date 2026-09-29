@@ -511,10 +511,10 @@ export function InboxList({
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        if (!showArchived && email) {
-          const data = await userFetch(
-            `/api/user/addresses/${encodeURIComponent(email)}/messages?q=${encodeURIComponent(q)}`
-          );
+        if (email) {
+          const params = new URLSearchParams({ email, q });
+          if (showArchived) params.set("archived", "true");
+          const data = await userFetch(`/api/email/inbox?${params.toString()}`);
           const raw = Array.isArray(data)
             ? data
             : Array.isArray((data as any)?.messages)
