@@ -1,9 +1,14 @@
 # Temp-Mail
 
+[![Release](https://img.shields.io/github/v/release/Aldi1963/Temp-Mail)](https://github.com/Aldi1963/Temp-Mail/releases)
+[![Android Build](https://github.com/Aldi1963/Temp-Mail/actions/workflows/android-build.yml/badge.svg)](https://github.com/Aldi1963/Temp-Mail/actions/workflows/android-build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Layanan email sekali pakai (disposable email) — buka halaman, langsung dapat alamat sementara, terima email & kode OTP tanpa harus daftar. Mirip temp-mail.org, tapi dengan akun opsional, API developer, dan dukungan domain sendiri (BYOD).
 
 - **Live:** https://m.clipku.com/tempmail/
 - **Dokumentasi API:** https://m.clipku.com/tempmail/api-docs
+- **Unduh Android:** [releases/tempmail-debug.apk](releases/tempmail-debug.apk)
 
 ## Aplikasi Android
 
@@ -49,14 +54,19 @@ Panel admin: dashboard + grafik trafik email, manajemen pengguna (tambah, suspen
 Pengirim ──▶ Cloudflare MX ──▶ Email Routing ──▶ Email Worker ──▶ POST /api/webhook/inbound-email ──▶ Inbox
 ```
 
-Panduan lengkap worker (Bahasa Indonesia): [cloudflare-worker/README.md](cloudflare-worker/README.md)
+## Dokumentasi
+
+- [Panduan build aplikasi Android](docs/BUILD_ANDROID.md) — GitHub Actions otomatis, Android Studio, atau terminal
+- [Panduan Cloudflare Worker](cloudflare-worker/README.md) — setup Email Routing & domain sendiri (BYOD)
+- [Dokumentasi API](https://m.clipku.com/tempmail/api-docs) — coba langsung dari browser
 
 ## Struktur repo
 
 ```
 .
+├── .github/workflows/   # CI: build APK Android otomatis
 ├── artifacts/
-│   ├── tempmail/        # Frontend: React + Vite + Tailwind (shadcn/ui)
+│   ├── tempmail/        # Frontend: React + Vite + Tailwind (shadcn/ui) + Capacitor (Android)
 │   └── api-server/      # Backend: Express 5 + PostgreSQL + Drizzle ORM
 ├── lib/
 │   ├── db/              # Skema Drizzle + drizzle-kit
@@ -64,6 +74,7 @@ Panduan lengkap worker (Bahasa Indonesia): [cloudflare-worker/README.md](cloudfl
 │   ├── api-zod/         # Skema validasi Zod (generated)
 │   └── api-client-react/# Client React (Orval, generated)
 ├── cloudflare-worker/   # Worker + panduan Email Routing
+├── docs/                # Panduan (build Android, dll.)
 ├── releases/            # APK Android terbaru (tempmail-debug.apk)
 └── scripts/
     └── git-hooks/       # pre-commit hook anti-secret
@@ -101,7 +112,7 @@ createdb tempmail
 | `CORS_EXTRA_ORIGINS` | Origin tambahan untuk CORS |
 | `PUBLIC_WEBHOOK_URL` | URL publik, dipakai worker script BYOD |
 | `TOTP_ENCRYPTION_KEY` | Enkripsi secret 2FA (disarankan) |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_WEBHOOK_SECRET` | Notifikasi via Telegram (opsional) |
+| `TELEGRAM_BOT_TOKEN` | Token bot Telegram untuk fitur teruskan ke Telegram |
 | `LOG_LEVEL` / `NODE_ENV` | Level log / environment |
 
 > Nilai asli hanya ada di server — tidak pernah di-commit. Hook pre-commit otomatis menolak commit yang mengandung pola API key.
@@ -117,7 +128,7 @@ curl "https://m.clipku.com/tempmail/api/email/inbox?email=kamu@domain.id"
 
 # Operasi destruktif butuh manage token
 curl -X DELETE "https://m.clipku.com/tempmail/api/email/message" \
-  -H "X-Manage-Token: <token>" -H "Content-Type: application/json" \
+  -H "X-Manage-Token: <token-kamu>" \
   -d '{"id":"<message-id>","email":"kamu@domain.id"}'
 ```
 
@@ -135,7 +146,8 @@ Dokumentasi lengkap + coba langsung: https://m.clipku.com/tempmail/api-docs
 
 - Satu fitur = satu commit, pesan model `feat:` / `fix:` / `chore:` (lihat `git log`)
 - Jangan commit `node_modules/`, `dist/`, `.env` (sudah di `.gitignore`)
+- Pengecualian: `releases/tempmail-debug.apk` memang sengaja di-commit (satu file, ditimpa tiap rilis)
 
 ## Lisensi
 
-MIT
+MIT — lihat [LICENSE](LICENSE).
