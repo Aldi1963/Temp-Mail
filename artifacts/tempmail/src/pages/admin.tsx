@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import AdminTrafficChart from "@/components/admin-traffic-chart";
+import AdminActivityLogs from "@/components/admin-activity-logs";
 // Format timestamp (ISO UTC dari server) ke WIB secara eksplisit,
 // agar tidak tergantung zona waktu browser/VPS.
 function formatWib(iso: string): string {
@@ -53,7 +54,7 @@ function formatWib(iso: string): string {
   return `${get("day")} ${get("month")} ${get("year")}, ${get("hour")}:${get("minute")} WIB`;
 }
 
-type Section = "overview" | "general" | "web" | "domains" | "users" | "stats";
+type Section = "overview" | "general" | "web" | "domains" | "users" | "stats" | "activity";
 
 interface AdminStats { totalUsers: number; totalEmails: number; totalMessages: number; }
 interface AdminUser { id: number; email: string; role: string; suspended: boolean; createdAt: string; emailCount: number; messageCount: number; }
@@ -104,6 +105,7 @@ const NAV = [
   { id: "domains" as Section, icon: Globe, label: "Domain" },
   { id: "users" as Section, icon: Users, label: "Pengguna" },
   { id: "stats" as Section, icon: BarChart2, label: "Statistik" },
+  { id: "activity" as Section, icon: FileText, label: "Log Aktivitas" },
 ];
 
 /* ── Desain admin: header editorial + tile statistik gradient ── */
@@ -232,6 +234,7 @@ const QUICK_DESC: Record<string, string> = {
   domains: "Kelola domain pengirim",
   users: "Kelola akun pengguna",
   stats: "Grafik & angka penggunaan",
+  activity: "Jejak aksi para admin",
 };
 
 function BrandingImageField({
@@ -373,7 +376,7 @@ export default function AdminPage() {
   const [active, setActive] = useState<Section>(() => {
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search).get("tab") as Section;
-      if (p && ["overview", "general", "web", "domains", "users", "stats"].includes(p)) return p;
+      if (p && ["overview", "general", "web", "domains", "users", "stats", "activity"].includes(p)) return p;
     }
     return "overview";
   });
@@ -1848,6 +1851,14 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            </>
+          )}
+
+          {/* ── LOG AKTIVITAS ── */}
+          {active === "activity" && (
+            <>
+              <PageHeader eyebrow="Audit" title="Log Aktivitas" desc="Jejak aksi yang dilakukan oleh para admin." />
+              <AdminActivityLogs />
             </>
           )}
 
