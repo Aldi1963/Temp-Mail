@@ -1,6 +1,6 @@
 import { Router, Request } from "express";
 import { db } from "@workspace/db";
-import { emailAddressesTable, messagesTable, blockedSendersTable, siteSettingsTable, customDomainsTable } from "@workspace/db";
+import { emailAddressesTable, messagesTable, blockedSendersTable, siteSettingsTable, customDomainsTable, blockedDomainsTable } from "@workspace/db";
 import { eq, and, desc, lt, isNull, isNotNull, ilike, or } from "drizzle-orm";
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
@@ -161,6 +161,20 @@ router.get("/generate", generateLimiter, async (req, res) => {
     ? [...activeDomains, ...(await getUserCustomDomains(genUserId))]
     : activeDomains;
   const selectedDomain = domain && allowedDomains.includes(domain) ? domain : activeDomains[0];
+
+  // Penegakan blokir domain global oleh admin
+  const blocked = await db
+    .select({ id: blockedDomainsTable.id })
+    .from(blockedDomainsTable)
+    .where(eq(blockedDomainsTable.domain, selectedDomain))
+    .limit(1);
+  if (blocked.length > 0) {
+    res.status(403).json({
+      error: "Forbidden",
+      message: `Domain ${selectedDomain} sedang diblokir dan tidak bisa dipakai untuk membuat alamat baru.`,
+    });
+    return;
+  }
   const selectedUsername = username && /^[a-z0-9._-]{1,30}$/.test(username) ? username : generateUsername();
   const email = `${selectedUsername}@${selectedDomain}`;
   const now = new Date();

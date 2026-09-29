@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable, broadcastsTable, activityLogsTable } from "@workspace/db";
+import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable, broadcastsTable, activityLogsTable, blockedDomainsTable } from "@workspace/db";
 import { eq, count, desc, gte, gt, sql, and, lt, isNotNull, isNull, ilike, or, inArray } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
@@ -181,6 +181,72 @@ router.get("/activity-logs", async (req, res) => {
     page,
     limit,
   });
+});
+
+// --- Blokir domain global (admin) ---
+router.get("/blocked-domains", async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(blockedDomainsTable)
+    .orderBy(desc(blockedDomainsTable.createdAt));
+  res.json({
+    blockedDomains: rows.map((r) => ({
+      id: r.id,
+      domain: r.domain,
+      reason: r.reason,
+      createdBy: r.createdBy,
+      createdAt: r.createdAt,
+    })),
+  });
+});
+
+router.post("/blocked-domains", async (req, res) => {
+  const { domain, reason } = req.body ?? {};
+  const cleanDomain =
+    typeof domain === "string" ? domain.trim().toLowerCase().replace(/^@/, "") : "";
+  if (!cleanDomain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(cleanDomain)) {
+    res.status(400).json({ error: "Bad request", message: "Domain tidak valid." });
+    return;
+  }
+  const cleanReason = typeof reason === "string" ? reason.trim().slice(0, 200) : null;
+  try {
+    const [row] = await db
+      .insert(blockedDomainsTable)
+      .values({ domain: cleanDomain, reason: cleanReason, createdBy: req.session.userId ?? null })
+      .returning();
+    await logActivity({
+      userId: req.session.userId ?? null,
+      action: "admin.domain_block",
+      description: `Admin memblokir domain ${cleanDomain}`,
+      metadata: { domain: cleanDomain, reason: cleanReason },
+    });
+    res.status(201).json({ success: true, id: row.id, domain: row.domain });
+  } catch (e: any) {
+    if (e?.code === "23505") {
+      res.status(409).json({ error: "Conflict", message: "Domain ini sudah diblokir." });
+      return;
+    }
+    throw e;
+  }
+});
+
+router.delete("/blocked-domains/:id", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const deleted = await db
+    .delete(blockedDomainsTable)
+    .where(eq(blockedDomainsTable.id, id))
+    .returning({ id: blockedDomainsTable.id, domain: blockedDomainsTable.domain });
+  if (deleted.length === 0) {
+    res.status(404).json({ error: "Not found", message: "Domain tidak ditemukan." });
+    return;
+  }
+  await logActivity({
+    userId: req.session.userId ?? null,
+    action: "admin.domain_unblock",
+    description: `Admin membuka blokir domain ${deleted[0].domain}`,
+    metadata: { domain: deleted[0].domain },
+  });
+  res.json({ success: true });
 });
 
 // --- Users ---
