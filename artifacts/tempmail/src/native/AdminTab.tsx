@@ -18,6 +18,7 @@ import { AdminDomains } from "./AdminDomains";
 import { AdminBroadcast } from "./AdminBroadcast";
 import { AdminServer } from "./AdminServer";
 import { AdminMaintenance } from "./AdminMaintenance";
+import { AdminTraffic } from "./AdminTraffic";
 
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -192,6 +193,8 @@ function AdminDashboard() {
           })}
         </div>
       </div>
+
+      <AdminTraffic />
     </div>
   );
 }
