@@ -1,7 +1,7 @@
 import { Router, Request } from "express";
 import { db } from "@workspace/db";
 import { emailAddressesTable, messagesTable, blockedSendersTable, siteSettingsTable, customDomainsTable } from "@workspace/db";
-import { eq, and, desc, lt, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, desc, lt, isNull, isNotNull, ilike, or } from "drizzle-orm";
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { publicOrApiKey } from "../lib/auth.js";
@@ -242,8 +242,17 @@ router.get("/inbox", async (req, res) => {
 
   const { email } = parsed.data;
   const wantArchived = req.query.archived === "true";
+  const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100) : "";
+  const searchCond = q
+    ? or(
+        ilike(messagesTable.subject, `%${q.replace(/[%_\\]/g, "\\$&")}%`),
+        ilike(messagesTable.fromAddress, `%${q.replace(/[%_\\]/g, "\\$&")}%`),
+        ilike(messagesTable.textBody, `%${q.replace(/[%_\\]/g, "\\$&")}%`),
+        ilike(messagesTable.preview, `%${q.replace(/[%_\\]/g, "\\$&")}%`)
+      )
+    : undefined;
   const [messages, blocked] = await Promise.all([
-    db.select().from(messagesTable).where(and(eq(messagesTable.email, email), eq(messagesTable.archived, wantArchived), isNull(messagesTable.deletedAt))).orderBy(desc(messagesTable.receivedAt)),
+    db.select().from(messagesTable).where(and(eq(messagesTable.email, email), eq(messagesTable.archived, wantArchived), isNull(messagesTable.deletedAt), searchCond)).orderBy(desc(messagesTable.receivedAt)),
     db.select().from(blockedSendersTable).where(eq(blockedSendersTable.email, email)),
   ]);
 
