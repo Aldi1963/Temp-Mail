@@ -255,14 +255,20 @@ router.post("/inbound-email", async (req, res) => {
     expiresAt: addr.expiresAt,
   });
 
-  await triggerWebhooksForEmail(toEmail, "new_message", {
+  // Webhook user dipicu best-effort: kegagalan di sini tidak boleh
+  // menggagalkan inbound (pesan sudah tersimpan di atas).
+  try {
+    await triggerWebhooksForEmail(toEmail, "new_message", {
     messageId,
     from: cleanFrom,
     to: toEmail,
     subject: subjectStr,
     preview,
     receivedAt: now.toISOString(),
-  });
+    });
+  } catch {
+    /* non-fatal */
+  }
 
   // Push notification ke aplikasi Android (FCM) — fire-and-forget,
   // gagal total = dilewati diam-diam (lihat lib/fcm.ts).
