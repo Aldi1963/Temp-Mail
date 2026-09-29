@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import {
   User, Lock, ShieldCheck, ChevronLeft, CheckCircle2, AlertTriangle, Copy, Eye, EyeOff,
-  MailCheck, MailWarning, ExternalLink
+  MailCheck, MailWarning, ExternalLink, Send, RefreshCw, Unplug
 } from "lucide-react";
 
 import { API_BASE_URL as BASE, getFullBase } from "../lib/api-base";
@@ -377,6 +377,143 @@ function TwoFactorCard() {
   );
 }
 
+
+interface TelegramStatus {
+  linked: boolean;
+  username?: string | null;
+}
+
+function TelegramCard() {
+  const [status, setStatus] = useState<TelegramStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const { toast } = useToast();
+
+  const jfetch = async (path: string, init?: RequestInit) => {
+    const r = await api(path, init);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || `HTTP ${r.status}`);
+    return d;
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const d = await jfetch("/user/telegram");
+      setStatus({ linked: !!d.linked, username: d.username ?? null });
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleLink = async () => {
+    setLinking(true);
+    try {
+      const d = await jfetch("/user/telegram/link", { method: "POST" });
+      if (!d?.url) throw new Error("URL penghubung tidak diterima dari server.");
+      window.open(d.url, "_blank", "noopener");
+      toast({
+        title: "Buka Telegram",
+        description: "Selesaikan penghubungan di aplikasi Telegram, lalu tekan Periksa Status.",
+      });
+    } catch (e) {
+      toast({ title: "Gagal", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setUnlinking(true);
+    try {
+      await jfetch("/user/telegram", { method: "DELETE" });
+      setStatus({ linked: false, username: null });
+      setConfirmUnlink(false);
+      toast({ title: "Telegram diputus", description: "Penerusan pesan ke Telegram dihentikan." });
+    } catch (e) {
+      toast({ title: "Gagal", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Send className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold text-lg">Notifikasi Telegram</h2>
+        </div>
+        {!loading && status && (
+          <Badge variant={status.linked ? "default" : "secondary"} className="text-xs">
+            {status.linked ? "Terhubung" : "Belum terhubung"}
+          </Badge>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Memuat status...</p>
+      ) : status === null ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Status Telegram belum bisa dimuat. Endpoint mungkin belum tersedia — coba lagi nanti.
+          </p>
+          <Button variant="outline" size="sm" onClick={load} className="gap-2">
+            <RefreshCw className="h-3.5 w-3.5" /> Coba Lagi
+          </Button>
+        </div>
+      ) : status.linked ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4" />
+            Terhubung{status.username ? <> sebagai <strong>@{status.username}</strong></> : ""}.
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Setiap pesan baru yang masuk ke alamat email Anda akan otomatis diteruskan ke Telegram.
+          </p>
+          {!confirmUnlink ? (
+            <Button variant="outline" onClick={() => setConfirmUnlink(true)} className="gap-2">
+              <Unplug className="h-4 w-4" /> Putus Koneksi
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-muted-foreground flex-1">Yakin ingin memutus Telegram?</p>
+              <Button variant="outline" size="sm" onClick={() => setConfirmUnlink(false)} disabled={unlinking}>
+                Batal
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleUnlink} disabled={unlinking}>
+                {unlinking ? "Memutus..." : "Ya, Putus"}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Hubungkan akun Telegram agar setiap pesan baru yang masuk ke alamat email Anda
+            otomatis diteruskan ke Telegram.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleLink} disabled={linking} className="gap-2">
+              <Send className="h-4 w-4" />
+              {linking ? "Membuka..." : "Hubungkan Telegram"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={load} className="gap-2 self-center">
+              <RefreshCw className="h-3.5 w-3.5" /> Periksa Status
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { user } = useAuth();
 
@@ -428,6 +565,7 @@ export default function ProfilePage() {
         </div>
 
         <EmailVerificationCard />
+        <TelegramCard />
         <ChangePasswordCard />
         <TwoFactorCard />
       </main>
