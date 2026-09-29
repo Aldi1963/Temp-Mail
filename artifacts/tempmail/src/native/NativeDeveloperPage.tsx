@@ -1,6 +1,7 @@
 // Halaman Developer: kelola webhook & API key. Dibuka dari tab Lainnya.
 import { useNativeAuth } from "./useNativeAuth";
 import { DeveloperWebhooks } from "./DeveloperWebhooks";
+import { DeveloperApiKeys } from "./DeveloperApiKeys";
 
 export function NativeDeveloperPage({ onOpenLogin }: { onOpenLogin: () => void }) {
   const { user } = useNativeAuth();
@@ -28,6 +29,7 @@ export function NativeDeveloperPage({ onOpenLogin }: { onOpenLogin: () => void }
   return (
     <div className="p-4">
       <DeveloperWebhooks />
+      <DeveloperApiKeys />
     </div>
   );
 }
