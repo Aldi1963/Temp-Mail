@@ -1,4 +1,4 @@
-// Kelola blokir pengirim: daftar, tambah manual inline, hapus.
+// Kelola blokir pengirim: daftar, tambah manual inline (email/domain), hapus.
 // Pesan dari pengirim terblokir tidak muncul di inbox.
 import { useCallback, useEffect, useState } from "react";
 import { Plus, ShieldX } from "lucide-react";
@@ -17,20 +17,25 @@ import {
 
 interface BlockedSender {
   id: string | number;
-  email: string;
-  reason?: string | null;
+  address?: string | null;
+  value: string;
+  type: "email" | "domain";
   createdAt?: string | null;
 }
 
-// Normalisasi defensif: backend bisa mengembalikan {items} atau array langsung,
-// dan field email bisa bernama email/sender/pattern.
+const TYPES: { key: "email" | "domain"; label: string; hint: string }[] = [
+  { key: "email", label: "Email", hint: "spam@contoh.com" },
+  { key: "domain", label: "Domain", hint: "contoh.com (tanpa @)" },
+];
+
 function normalize(raw: any): BlockedSender[] {
-  const arr = Array.isArray(raw) ? raw : (raw?.items ?? raw?.senders ?? raw?.blocked ?? []);
+  const arr = Array.isArray(raw) ? raw : (raw?.blocked ?? raw?.items ?? []);
   if (!Array.isArray(arr)) return [];
   return arr.map((b: any, i: number) => ({
-    id: b?.id ?? b?.email ?? b?.sender ?? b?.pattern ?? `row-${i}`,
-    email: String(b?.email ?? b?.sender ?? b?.pattern ?? ""),
-    reason: b?.reason ?? null,
+    id: b?.id ?? `row-${i}`,
+    address: b?.address ?? null,
+    value: String(b?.value ?? b?.pattern ?? ""),
+    type: b?.type === "domain" ? "domain" : "email",
     createdAt: b?.createdAt ?? null,
   }));
 }
@@ -41,8 +46,8 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
   const [items, setItems] = useState<BlockedSender[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newReason, setNewReason] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [newType, setNewType] = useState<"email" | "domain">("email");
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | number | null>(null);
 
@@ -66,19 +71,17 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
   const err = (e: unknown) => (e instanceof Error ? e.message : "Terjadi kesalahan.");
 
   const add = async () => {
-    const email = newEmail.trim().toLowerCase();
-    if (!email || adding) return;
+    const value = newValue.trim();
+    if (!value || adding) return;
     setAdding(true);
     try {
-      const res = await nativeFetch("/api/user/blocked-senders", {
-        method: "POST",
-        body: JSON.stringify({ email, reason: newReason.trim() || undefined }),
-      });
-      const added = normalize(res)[0] ?? { id: email, email, reason: newReason.trim() || null };
-      setItems((prev) => [added, ...prev]);
-      setNewEmail("");
-      setNewReason("");
-      toast({ title: "Pengirim diblokir", description: email });
+      const res = await nativeFetch<{ value?: string; type?: "email" | "domain" }>(
+        "/api/user/blocked-senders",
+        { method: "POST", body: JSON.stringify({ value, type: newType }) }
+      );
+      setNewValue("");
+      toast({ title: "Pengirim diblokir", description: res?.value ?? value });
+      void load();
     } catch (e) {
       toast({ title: "Gagal menambah blokir", description: err(e), variant: "destructive" });
     } finally {
@@ -93,7 +96,7 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
         method: "DELETE",
       });
       setItems((prev) => prev.filter((x) => x.id !== b.id));
-      toast({ title: "Blokir dihapus", description: b.email });
+      toast({ title: "Blokir dihapus", description: b.value });
     } catch (e) {
       toast({ title: "Gagal menghapus", description: err(e), variant: "destructive" });
     } finally {
@@ -110,7 +113,7 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
           </span>
           <p className="text-[14px] font-extrabold">Masuk dulu untuk memblokir pengirim</p>
           <p className="text-[12.5px] text-muted-foreground mt-1.5 leading-relaxed">
-            Daftar blokir pengirim tersimpan di akun Anda.
+            Daftar blokir pengirim tersimpan di akun Anda dan berlaku untuk semua alamat.
           </p>
           <button
             type="button"
@@ -127,40 +130,48 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
   return (
     <div className="p-4 space-y-3">
       <div className="rounded-3xl border border-border/60 bg-card p-4 space-y-3">
-        <Field label="Blokir pengirim baru" hint="Alamat email atau domain diawali @ (mis. spam@contoh.com atau @contoh.com).">
-          <input
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void add();
-            }}
-            placeholder="spam@contoh.com"
-            autoCapitalize="none"
-            autoCorrect="off"
-            inputMode="email"
-            className={cn(inputCls, "font-mono")}
-          />
+        <Field label="Blokir pengirim baru" hint="Blokir berlaku untuk semua alamat di akun Anda.">
+          <div className="flex gap-1.5 mb-2.5">
+            {TYPES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setNewType(t.key)}
+                className={cn(
+                  "rounded-full border px-3.5 py-1.5 text-[12.5px] font-bold active:scale-95",
+                  newType === t.key
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/70 text-muted-foreground"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void add();
+              }}
+              placeholder={TYPES.find((t) => t.key === newType)?.hint}
+              autoCapitalize="none"
+              autoCorrect="off"
+              inputMode="email"
+              className={cn(inputCls, "flex-1 min-w-0 font-mono")}
+            />
+            <button
+              type="button"
+              disabled={adding || !newValue.trim()}
+              onClick={() => void add()}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground text-[13px] font-bold px-4 active:scale-[0.97] disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+              {adding ? "…" : "Blokir"}
+            </button>
+          </div>
         </Field>
-        <Field label="Alasan (opsional)">
-          <input
-            value={newReason}
-            onChange={(e) => setNewReason(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void add();
-            }}
-            placeholder="Mis. spam promo"
-            className={inputCls}
-          />
-        </Field>
-        <button
-          type="button"
-          disabled={adding || !newEmail.trim()}
-          onClick={() => void add()}
-          className="w-full inline-flex items-center justify-center gap-1.5 rounded-2xl bg-primary text-primary-foreground text-[13.5px] font-extrabold py-2.5 active:scale-[0.99] disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" />
-          {adding ? "Menambahkan…" : "Blokir pengirim"}
-        </button>
       </div>
 
       {loading ? (
@@ -182,7 +193,17 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
           <div key={String(b.id)} className="rounded-3xl border border-border/60 bg-card p-4">
             <div className="flex items-center gap-2">
               <span className="flex-1 min-w-0 font-mono text-[13px] font-bold truncate">
-                {b.email}
+                {b.value}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-md",
+                  b.type === "domain"
+                    ? "bg-violet-500/15 text-violet-500"
+                    : "bg-sky-500/15 text-sky-500"
+                )}
+              >
+                {b.type === "domain" ? "Domain" : "Email"}
               </span>
               <DangerConfirm
                 label="Buka blokir"
@@ -191,10 +212,10 @@ export function BlockedSenders({ onOpenLogin }: { onOpenLogin: () => void }) {
                 disabled={busyId === b.id}
               />
             </div>
-            {(b.reason || b.createdAt) && (
+            {(b.address || b.createdAt) && (
               <p className="text-[11px] text-muted-foreground mt-1.5">
-                {b.reason ? <span className="font-semibold">{b.reason}</span> : null}
-                {b.reason && b.createdAt ? " · " : ""}
+                {b.address ? <span className="font-mono">{b.address}</span> : null}
+                {b.address && b.createdAt ? " · " : ""}
                 {b.createdAt ? `Diblokir ${fmtDateTime(b.createdAt)}` : ""}
               </p>
             )}
