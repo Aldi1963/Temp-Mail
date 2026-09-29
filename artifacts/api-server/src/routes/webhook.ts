@@ -9,6 +9,7 @@ import {
   usersTable,
   customDomainsTable,
   telegramLinkTokensTable,
+  blockedSendersTable,
 } from "@workspace/db";
 import { eq, inArray, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
@@ -236,6 +237,27 @@ router.post("/inbound-email", async (req, res) => {
   cleanSnippet = cleanSnippet.replace(/\s+/g, " ").trim();
 
   const preview = cleanSnippet.slice(0, 200);
+
+  // Penegakan daftar blokir pengirim di inbound: pesan dari pengirim yang
+  // diblokir tidak disimpan, tidak memicu webhook, dan tidak diteruskan
+  // ke Telegram. Kembalikan 200 agar worker pengirim tidak retry.
+  {
+    const blocked = await db
+      .select({ pattern: blockedSendersTable.pattern })
+      .from(blockedSendersTable)
+      .where(eq(blockedSendersTable.email, toEmail));
+    const fromLc = (cleanFrom || "").toLowerCase();
+    const envFromLc = fromEmail.toLowerCase();
+    const isBlocked = blocked.some((b) => {
+      const pat = b.pattern.toLowerCase();
+      if (pat.startsWith("@")) return fromLc.endsWith(pat) || envFromLc.endsWith(pat);
+      return fromLc === pat || envFromLc === pat;
+    });
+    if (isBlocked) {
+      res.json({ success: true, blocked: true, message: "Pengirim diblokir." });
+      return;
+    }
+  }
 
   const messageId = randomUUID();
 

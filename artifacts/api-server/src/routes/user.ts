@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { emailAddressesTable, messagesTable, activityLogsTable, usersTable,
-  telegramLinkTokensTable } from "@workspace/db";
-import { eq, desc, count, and, isNull, gt } from "drizzle-orm";
+  telegramLinkTokensTable, blockedSendersTable } from "@workspace/db";
+import { eq, desc, count, and, isNull, gt, inArray } from "drizzle-orm";
 import { createHash, timingSafeEqual, randomBytes } from "crypto";
 import { requireAuth, requireAuthOrApiKey } from "../lib/auth.js";
 import { siteSettingsTable } from "@workspace/db";
@@ -378,6 +378,131 @@ router.patch("/emails/retention", async (req, res) => {
     .set({ autoDeleteDays: days })
     .where(eq(emailAddressesTable.email, cleanEmail));
   res.json({ email: cleanEmail, autoDeleteDays: days });
+});
+
+// --- Daftar blokir pengirim (cakupan user) ---------------------------------
+// Pola disimpan per alamat di blocked_senders (kolom email); endpoint ini
+// menyajikannya per user agar mudah dikelola dari satu tempat.
+
+function senderTypeOf(pattern: string): "email" | "domain" {
+  return pattern.startsWith("@") ? "domain" : "email";
+}
+
+router.get("/blocked-senders", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  const addrs = await db
+    .select({ email: emailAddressesTable.email })
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.userId, userId));
+  if (addrs.length === 0) {
+    res.json({ blocked: [] });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(blockedSendersTable)
+    .where(inArray(blockedSendersTable.email, addrs.map((a) => a.email)))
+    .orderBy(desc(blockedSendersTable.createdAt));
+  res.json({
+    blocked: rows.map((r) => ({
+      id: r.id,
+      address: r.email,
+      value: r.pattern,
+      type: senderTypeOf(r.pattern),
+      createdAt: r.createdAt,
+    })),
+  });
+});
+
+router.post("/blocked-senders", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  const { value, type, address } = req.body ?? {};
+
+  if (!value || typeof value !== "string" || !["email", "domain"].includes(type)) {
+    res.status(400).json({
+      error: "Bad request",
+      message: "value dan type ('email'|'domain') wajib diisi.",
+    });
+    return;
+  }
+
+  const normalized =
+    type === "domain"
+      ? "@" + value.trim().toLowerCase().replace(/^@/, "")
+      : value.trim().toLowerCase();
+  if (!normalized || normalized === "@") {
+    res.status(400).json({ error: "Bad request", message: "value tidak valid." });
+    return;
+  }
+
+  let targets: string[];
+  if (address) {
+    const cleanAddr = String(address).trim().toLowerCase();
+    const [row] = await db
+      .select()
+      .from(emailAddressesTable)
+      .where(eq(emailAddressesTable.email, cleanAddr))
+      .limit(1);
+    if (!row || row.userId !== userId) {
+      res.status(403).json({ error: "Forbidden", message: "Alamat ini bukan milik akun Anda." });
+      return;
+    }
+    targets = [cleanAddr];
+  } else {
+    const addrs = await db
+      .select({ email: emailAddressesTable.email })
+      .from(emailAddressesTable)
+      .where(eq(emailAddressesTable.userId, userId));
+    targets = addrs.map((a) => a.email);
+  }
+
+  if (targets.length === 0) {
+    res.status(400).json({
+      error: "Bad request",
+      message: "Belum ada alamat email. Buat alamat dulu sebelum memblokir pengirim.",
+    });
+    return;
+  }
+
+  let added = 0;
+  for (const t of targets) {
+    const existing = await db
+      .select({ id: blockedSendersTable.id })
+      .from(blockedSendersTable)
+      .where(and(eq(blockedSendersTable.email, t), eq(blockedSendersTable.pattern, normalized)))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(blockedSendersTable).values({ email: t, pattern: normalized });
+      added++;
+    }
+  }
+  res.json({ success: true, added, value: normalized, type });
+});
+
+router.delete("/blocked-senders/:id", requireAuth, async (req, res) => {
+  const userId = req.session.userId ?? req.apiKeyUserId!;
+  const id = parseInt(req.params.id, 10);
+
+  const [row] = await db
+    .select()
+    .from(blockedSendersTable)
+    .where(eq(blockedSendersTable.id, id))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found", message: "Entri blokir tidak ditemukan." });
+    return;
+  }
+  const [addr] = await db
+    .select({ userId: emailAddressesTable.userId })
+    .from(emailAddressesTable)
+    .where(eq(emailAddressesTable.email, row.email))
+    .limit(1);
+  if (!addr || addr.userId !== userId) {
+    res.status(403).json({ error: "Forbidden", message: "Entri ini bukan milik akun Anda." });
+    return;
+  }
+  await db.delete(blockedSendersTable).where(eq(blockedSendersTable.id, id));
+  res.json({ success: true });
 });
 
 export { router as userRouter };
