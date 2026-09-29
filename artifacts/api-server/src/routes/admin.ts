@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable, broadcastsTable } from "@workspace/db";
-import { eq, count, desc, gte, gt, sql, and, lt, isNotNull, isNull } from "drizzle-orm";
+import { usersTable, emailAddressesTable, messagesTable, siteSettingsTable, broadcastsTable, activityLogsTable } from "@workspace/db";
+import { eq, count, desc, gte, gt, sql, and, lt, isNotNull, isNull, ilike, or, inArray } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import dns from "dns";
 import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "util";
 import { requireAdmin } from "../lib/auth.js";
+import { logActivity } from "../lib/activity.js";
 
 const dnsResolve4 = promisify(dns.resolve4);
 const dnsResolveCname = promisify(dns.resolveCname);
@@ -126,6 +127,62 @@ router.get("/stats/traffic", async (req, res) => {
   res.json(Object.entries(byDay).map(([date, count]) => ({ date, count })));
 });
 
+// --- Log aktivitas (admin) ---
+router.get("/activity-logs", async (req, res) => {
+  const type = typeof req.query.type === "string" ? req.query.type.trim().slice(0, 60) : "";
+  const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100) : "";
+  const page = Math.max(parseInt(String(req.query.page ?? "1"), 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "20"), 10) || 20, 1), 100);
+
+  const conds = [];
+  if (type) conds.push(ilike(activityLogsTable.action, `%${type.replace(/[%_\\]/g, "\\$&")}%`));
+  if (q) {
+    const safe = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
+    conds.push(or(ilike(activityLogsTable.action, safe), ilike(activityLogsTable.description, safe)));
+  }
+  const where = conds.length > 0 ? and(...conds) : undefined;
+
+  const [[totalRow], items] = await Promise.all([
+    db.select({ count: count() }).from(activityLogsTable).where(where),
+    db
+      .select()
+      .from(activityLogsTable)
+      .where(where)
+      .orderBy(desc(activityLogsTable.createdAt))
+      .limit(limit)
+      .offset((page - 1) * limit),
+  ]);
+
+  let actorEmail: Record<number, string> = {};
+  const userIds = [...new Set(items.map((i) => i.userId).filter((u): u is number => u !== null))];
+  if (userIds.length > 0) {
+    const users = await db
+      .select({ id: usersTable.id, email: usersTable.email })
+      .from(usersTable)
+      .where(inArray(usersTable.id, userIds));
+    for (const u of users) actorEmail[u.id] = u.email;
+  }
+
+  res.json({
+    items: items.map((l) => {
+      let metadata: unknown = {};
+      try { metadata = JSON.parse(l.metadata); } catch { /* abaikan */ }
+      return {
+        id: l.id,
+        userId: l.userId,
+        actorEmail: l.userId !== null ? actorEmail[l.userId] ?? null : null,
+        action: l.action,
+        description: l.description,
+        metadata,
+        createdAt: l.createdAt,
+      };
+    }),
+    total: Number(totalRow.count),
+    page,
+    limit,
+  });
+});
+
 // --- Users ---
 router.get("/users", async (_req, res) => {
   const users = await db
@@ -212,6 +269,12 @@ router.patch("/users/:id/suspend", async (req, res) => {
     // [SECURITY] Akhiri semua sesi aktif user yang dinonaktifkan
     await db.execute(sql`DELETE FROM user_sessions WHERE (sess::jsonb ->> 'userId') = ${String(id)}`);
   }
+  await logActivity({
+    userId: req.session.userId ?? null,
+    action: suspended ? "admin.user_suspend" : "admin.user_unsuspend",
+    description: `Admin ${suspended ? "menonaktifkan" : "mengaktifkan kembali"} user #${id}`,
+    metadata: { targetUserId: id, suspended },
+  });
   res.json({ success: true, message: suspended ? "Pengguna dinonaktifkan." : "Pengguna diaktifkan kembali." });
 });
 
@@ -384,6 +447,12 @@ router.post("/broadcast", async (req, res) => {
     .insert(broadcastsTable)
     .values({ title: cleanTitle, body: cleanBody, createdBy: req.session.userId ?? null })
     .returning({ id: broadcastsTable.id });
+  await logActivity({
+    userId: req.session.userId ?? null,
+    action: "admin.broadcast",
+    description: `Admin mengirim broadcast: ${cleanTitle}`,
+    metadata: { broadcastId: row.id, title: cleanTitle },
+  });
   res.status(201).json({
     success: true,
     id: row.id,
