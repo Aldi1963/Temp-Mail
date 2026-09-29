@@ -11,6 +11,8 @@ Layanan email sekali pakai (disposable email) — buka halaman, langsung dapat a
 - Versi-versi lama ada di halaman [Releases](../../releases)
 - Cara pasang: hapus-instal versi lama dulu, lalu instal APK yang baru (belum ditandatangani Play Store — izinkan "instal dari sumber tidak dikenal" saat diminta)
 
+Panduan lengkap cara build: [docs/BUILD_ANDROID.md](docs/BUILD_ANDROID.md) (GitHub Actions otomatis, Android Studio, atau manual via terminal).
+
 Fitur khusus aplikasi: kunci PIN/biometrik, widget home screen, pengingat alamat kedaluwarsa (H-24 & H-1), salin OTP otomatis, retensi & hapus pesan otomatis per alamat, ekspor/backup alamat (JSON), teruskan pesan ke Telegram, bottom navigation ala aplikasi native.
 
 ## Fitur
