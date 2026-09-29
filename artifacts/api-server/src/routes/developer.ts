@@ -101,6 +101,29 @@ router.post("/keys/:id/regenerate", async (req, res) => {
   });
 });
 
+router.patch("/keys/:id", async (req, res) => {
+  const userId = req.session.userId!;
+  const id = parseInt(req.params.id, 10);
+  const { name } = req.body ?? {};
+
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    res.status(400).json({ error: "Bad request", message: "Nama API key wajib diisi." });
+    return;
+  }
+
+  const updated = await db
+    .update(apiKeysTable)
+    .set({ name: name.trim() })
+    .where(and(eq(apiKeysTable.id, id), eq(apiKeysTable.userId, userId)))
+    .returning({ id: apiKeysTable.id, name: apiKeysTable.name });
+
+  if (updated.length === 0) {
+    res.status(404).json({ error: "Not found", message: "API key tidak ditemukan." });
+    return;
+  }
+  res.json({ success: true, id: updated[0].id, name: updated[0].name });
+});
+
 router.delete("/keys/:id", async (req, res) => {
   const userId = req.session.userId!;
   const id = parseInt(req.params.id, 10);
