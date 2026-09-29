@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import AdminTrafficChart from "@/components/admin-traffic-chart";
 import AdminActivityLogs from "@/components/admin-activity-logs";
+import AdminBlockedDomains from "@/components/admin-blocked-domains";
 // Format timestamp (ISO UTC dari server) ke WIB secara eksplisit,
 // agar tidak tergantung zona waktu browser/VPS.
 function formatWib(iso: string): string {
@@ -54,7 +55,7 @@ function formatWib(iso: string): string {
   return `${get("day")} ${get("month")} ${get("year")}, ${get("hour")}:${get("minute")} WIB`;
 }
 
-type Section = "overview" | "general" | "web" | "domains" | "users" | "stats" | "activity";
+type Section = "overview" | "general" | "web" | "domains" | "users" | "stats" | "activity" | "blockedDomains";
 
 interface AdminStats { totalUsers: number; totalEmails: number; totalMessages: number; }
 interface AdminUser { id: number; email: string; role: string; suspended: boolean; createdAt: string; emailCount: number; messageCount: number; }
@@ -106,6 +107,7 @@ const NAV = [
   { id: "users" as Section, icon: Users, label: "Pengguna" },
   { id: "stats" as Section, icon: BarChart2, label: "Statistik" },
   { id: "activity" as Section, icon: FileText, label: "Log Aktivitas" },
+  { id: "blockedDomains" as Section, icon: Ban, label: "Domain Diblokir" },
 ];
 
 /* ── Desain admin: header editorial + tile statistik gradient ── */
@@ -235,6 +237,7 @@ const QUICK_DESC: Record<string, string> = {
   users: "Kelola akun pengguna",
   stats: "Grafik & angka penggunaan",
   activity: "Jejak aksi para admin",
+  blockedDomains: "Blokir domain pengirim",
 };
 
 function BrandingImageField({
@@ -376,7 +379,7 @@ export default function AdminPage() {
   const [active, setActive] = useState<Section>(() => {
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search).get("tab") as Section;
-      if (p && ["overview", "general", "web", "domains", "users", "stats", "activity"].includes(p)) return p;
+      if (p && ["overview", "general", "web", "domains", "users", "stats", "activity", "blockedDomains"].includes(p)) return p;
     }
     return "overview";
   });
@@ -1859,6 +1862,14 @@ export default function AdminPage() {
             <>
               <PageHeader eyebrow="Audit" title="Log Aktivitas" desc="Jejak aksi yang dilakukan oleh para admin." />
               <AdminActivityLogs />
+            </>
+          )}
+
+          {/* ── DOMAIN DIBLOKIR ── */}
+          {active === "blockedDomains" && (
+            <>
+              <PageHeader eyebrow="Keamanan" title="Domain Diblokir" desc="Domain yang tidak boleh dipakai membuat alamat email." />
+              <AdminBlockedDomains />
             </>
           )}
 
