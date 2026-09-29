@@ -6,6 +6,8 @@ on:
     paths:
       - 'artifacts/tempmail/**'
       - '.github/workflows/android-build.yml'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
   release:
     types: [published]
   workflow_dispatch:
