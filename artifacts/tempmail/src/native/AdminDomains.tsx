@@ -55,7 +55,7 @@ export function AdminDomains() {
     setLoading(true);
     setError("");
     try {
-      const res = await nativeFetch<DomainListRes>("/api/custom-domains");
+      const res = await nativeFetch<DomainListRes>("/api/user/domains");
       setDomains(res.domains);
       setMaxPerUser(res.maxPerUser);
     } catch (e) {
@@ -87,7 +87,7 @@ export function AdminDomains() {
     if (!d || adding) return;
     setAdding(true);
     try {
-      const res = await nativeFetch<{ domain: CustomDomain }>("/api/custom-domains", {
+      const res = await nativeFetch<{ domain: CustomDomain }>("/api/user/domains", {
         method: "POST",
         body: JSON.stringify({ domain: d }),
       });
@@ -104,7 +104,7 @@ export function AdminDomains() {
   const verify = async (d: CustomDomain) => {
     setVerifyingId(d.id);
     try {
-      const res = await nativeFetch<VerifyRes>(`/api/custom-domains/${d.id}/verify`, {
+      const res = await nativeFetch<VerifyRes>(`/api/user/domains/${d.id}/verify`, {
         method: "POST",
       });
       setDomains((prev) => prev.map((x) => (x.id === d.id ? { ...x, status: res.status } : x)));
@@ -120,7 +120,7 @@ export function AdminDomains() {
   const remove = async (d: CustomDomain) => {
     setBusyDel(d.id);
     try {
-      await nativeFetch(`/api/custom-domains/${d.id}`, { method: "DELETE" });
+      await nativeFetch(`/api/user/domains/${d.id}`, { method: "DELETE" });
       setDomains((prev) => prev.filter((x) => x.id !== d.id));
       toast({ title: "Domain dihapus." });
     } catch (e) {
