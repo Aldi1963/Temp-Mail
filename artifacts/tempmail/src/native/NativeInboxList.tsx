@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Trash2 } from "lucide-react";
+import { Archive, Check, Copy, RotateCcw, Trash2 } from "lucide-react";
 import { getGetInboxQueryKey } from "@aldi1963/temp-mail-api-client";
 import { cn } from "@/lib/utils";
 import { nativeFetch, manageHeaders } from "./api";
@@ -28,14 +28,21 @@ const FILTERS: { key: MsgFilter; label: string }[] = [
   { key: "attachment", label: "Lampiran" },
 ];
 
+export interface ArchiveAction {
+  mode: "archive" | "unarchive";
+  onToggle: (id: string) => void;
+  busyId?: string | null;
+}
+
 interface Props {
   messages: NativeMsg[];
   loading: boolean;
   email: string;
   onSelect: (id: string) => void;
+  archiveAction?: ArchiveAction;
 }
 
-export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
+export function NativeInboxList({ messages, loading, email, onSelect, archiveAction }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const { toast } = useToast();
   const [copiedEmail, setCopiedEmail] = useState(false);
@@ -290,6 +297,37 @@ export function NativeInboxList({ messages, loading, email, onSelect }: Props) {
             </span>
             <span className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
               {unread && <span className="w-2 h-2 rounded-full bg-primary" />}
+              {archiveAction && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={archiveAction.mode === "archive" ? "Arsipkan pesan" : "Kembalikan dari arsip"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    archiveAction.onToggle(m.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      archiveAction.onToggle(m.id);
+                    }
+                  }}
+                  className={cn(
+                    "w-7 h-7 rounded-full flex items-center justify-center active:bg-muted",
+                    archiveAction.busyId === m.id
+                      ? "text-muted-foreground/40"
+                      : "text-muted-foreground/60"
+                  )}
+                >
+                  {archiveAction.busyId === m.id ? (
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-primary animate-spin" />
+                  ) : archiveAction.mode === "archive" ? (
+                    <Archive className="h-3.5 w-3.5" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  )}
+                </span>
+              )}
               <span
                 role="button"
                 tabIndex={0}

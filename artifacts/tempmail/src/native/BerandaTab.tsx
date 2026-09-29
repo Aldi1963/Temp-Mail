@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  Archive,
   CheckCheck,
   Clock,
   Copy,
@@ -21,6 +22,8 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useTheme } from "@/components/theme-provider";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetInboxQueryKey } from "@aldi1963/temp-mail-api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useNativeAuth } from "./useNativeAuth";
@@ -89,6 +92,11 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
   const [results, setResults] = useState<NativeMsg[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [addressId, setAddressId] = useState<string | number | null>(null);
+  const [inboxTab, setInboxTab] = useState<"inbox" | "arsip">("inbox");
+  const [archived, setArchived] = useState<NativeMsg[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const dark = theme === "dark";
   const messages = (mailbox.inbox?.messages ?? []) as unknown as NativeMsg[];
 
@@ -254,6 +262,54 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
   }, [q, addressId, messages]);
 
   const shownMessages = results ?? messages;
+
+  const loadArchived = useCallback(async () => {
+    if (!mailbox.activeEmail) {
+      setArchived([]);
+      return;
+    }
+    setArchivedLoading(true);
+    try {
+      const d = await nativeFetch<{ messages?: NativeMsg[] }>(
+        `/api/email/inbox?email=${encodeURIComponent(mailbox.activeEmail)}&archived=true`,
+        { headers: manageHeaders(mailbox.activeEmail) }
+      );
+      setArchived((d?.messages ?? []) as NativeMsg[]);
+    } catch {
+      /* abaikan — tampilkan kosong */
+    } finally {
+      setArchivedLoading(false);
+    }
+  }, [mailbox.activeEmail]);
+
+  useEffect(() => {
+    if (inboxTab === "arsip") void loadArchived();
+    else setResults(null);
+  }, [inboxTab, loadArchived]);
+
+  const toggleArchive = async (id: string, toArchived: boolean) => {
+    if (!mailbox.activeEmail || archiveBusyId) return;
+    setArchiveBusyId(id);
+    try {
+      await nativeFetch(`/api/messages/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: manageHeaders(mailbox.activeEmail),
+        body: JSON.stringify({ archived: toArchived }),
+      });
+      queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email: mailbox.activeEmail }) });
+      toast({ title: toArchived ? "Pesan diarsipkan" : "Pesan dikembalikan ke inbox" });
+      void loadArchived();
+      mailbox.refreshInbox();
+    } catch (e) {
+      toast({
+        title: toArchived ? "Gagal mengarsipkan" : "Gagal mengembalikan",
+        description: e instanceof Error ? e.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    } finally {
+      setArchiveBusyId(null);
+    }
+  };
 
   return (
     <div>
@@ -535,6 +591,7 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
 
       {/* Pesan masuk */}
       <div className="mt-5 pb-6">
+        {inboxTab === "inbox" && (
         <div className="px-4 pb-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -563,8 +620,36 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
             </p>
           )}
         </div>
+        )}
+        <div className="px-4 pb-1 flex gap-1.5">
+          {(
+            [
+              { key: "inbox", label: "Kotak Masuk", icon: Inbox },
+              { key: "arsip", label: "Arsip", icon: Archive },
+            ] as const
+          ).map((t) => {
+            const Icon = t.icon;
+            const active = inboxTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setInboxTab(t.key)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold active:scale-95",
+                  active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex items-center gap-2 pl-4 pr-2 mb-1">
-          <h3 className="text-[14px] font-extrabold flex-1">Pesan Masuk</h3>
+          <h3 className="text-[14px] font-extrabold flex-1">
+            {inboxTab === "inbox" ? "Pesan Masuk" : "Arsip"}
+          </h3>
           {mailbox.unreadCount > 0 && (
             <span className="min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold inline-flex items-center justify-center">
               {mailbox.unreadCount}
@@ -588,10 +673,15 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
           </button>
         </div>
         <NativeInboxList
-          messages={shownMessages}
-          loading={mailbox.inboxLoading}
+          messages={inboxTab === "inbox" ? shownMessages : archived}
+          loading={inboxTab === "inbox" ? mailbox.inboxLoading : archivedLoading}
           email={mailbox.activeEmail ?? ""}
           onSelect={onSelectMessage}
+          archiveAction={{
+            mode: inboxTab === "inbox" ? "archive" : "unarchive",
+            onToggle: (id) => void toggleArchive(id, inboxTab === "inbox"),
+            busyId: archiveBusyId,
+          }}
         />
       </div>
     </div>
