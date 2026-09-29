@@ -97,6 +97,35 @@ router.get("/stats/detail", async (_req, res) => {
   });
 });
 
+// --- Grafik trafik pesan (N hari terakhir) ---
+router.get("/stats/traffic", async (req, res) => {
+  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "30"), 10) || 30, 1), 365);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startDate = new Date(todayStart);
+  startDate.setDate(startDate.getDate() - (days - 1));
+
+  const raw = await db.execute(
+    sql`SELECT DATE(received_at) as date, COUNT(*)::int as count FROM messages WHERE received_at >= ${startDate} GROUP BY DATE(received_at) ORDER BY date ASC`
+  );
+
+  // Key tanggal LOKAL server (bukan UTC): toISOString() menggeser hari
+  // untuk zona UTC+x.
+  const byDay: Record<string, number> = {};
+  for (let i = 0; i < days; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    byDay[key] = 0;
+  }
+  for (const r of raw.rows as { date: string; count: number }[]) {
+    const key = String(r.date).slice(0, 10);
+    if (key in byDay) byDay[key] = Number(r.count);
+  }
+
+  res.json(Object.entries(byDay).map(([date, count]) => ({ date, count })));
+});
+
 // --- Users ---
 router.get("/users", async (_req, res) => {
   const users = await db
