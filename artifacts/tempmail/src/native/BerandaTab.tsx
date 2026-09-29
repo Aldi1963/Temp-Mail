@@ -91,7 +91,6 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
   const [q, setQ] = useState("");
   const [results, setResults] = useState<NativeMsg[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [addressId, setAddressId] = useState<string | number | null>(null);
   const [inboxTab, setInboxTab] = useState<"inbox" | "arsip">("inbox");
   const [archived, setArchived] = useState<NativeMsg[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
@@ -196,70 +195,27 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
   const [local, domain] = (mailbox.activeEmail ?? "").split("@");
   const total = messages.length;
 
-  // Cari addressId alamat aktif (dibutuhkan endpoint pencarian server).
-  useEffect(() => {
-    if (!user || !mailbox.activeEmail) {
-      setAddressId(null);
-      return;
-    }
-    let cancelled = false;
-    nativeFetch<{ emails?: { id?: number | string; addressId?: number | string; email: string }[] }>(
-      "/api/user/emails"
-    )
-      .then((d) => {
-        if (cancelled) return;
-        const hit = (d?.emails ?? []).find((e) => e.email === mailbox.activeEmail);
-        setAddressId(hit ? ((hit.id ?? hit.addressId) as number | string | undefined) ?? null : null);
-      })
-      .catch(() => {
-        if (!cancelled) setAddressId(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, mailbox.activeEmail]);
-
-  // Pencarian ter-debounce: server bila addressId ada, else filter lokal.
+  // Pencarian server ter-debounce via GET /api/email/inbox?q=
+  // (mencari di subject/from/textBody, case-insensitive).
   useEffect(() => {
     const query = q.trim();
-    if (!query) {
+    if (!query || !mailbox.activeEmail) {
       setResults(null);
       setSearching(false);
       return;
     }
-    if (!addressId) {
-      const lq = query.toLowerCase();
-      setResults(
-        messages.filter((m) =>
-          `${m.from ?? ""} ${m.subject ?? ""} ${m.preview ?? ""}`.toLowerCase().includes(lq)
-        )
-      );
-      return;
-    }
     setSearching(true);
     const t = window.setTimeout(() => {
-      nativeFetch<{ messages?: any[] } | any[]>(
-        `/api/user/addresses/${encodeURIComponent(String(addressId))}/messages?q=${encodeURIComponent(query)}`
+      nativeFetch<{ messages?: NativeMsg[] }>(
+        `/api/email/inbox?email=${encodeURIComponent(mailbox.activeEmail as string)}&q=${encodeURIComponent(query)}`,
+        { headers: manageHeaders(mailbox.activeEmail as string) }
       )
-        .then((d) => {
-          const arr = Array.isArray(d) ? d : (d?.messages ?? []);
-          setResults(
-            arr.map((m: any) => ({
-              id: String(m?.id ?? ""),
-              from: String(m?.from ?? m?.fromAddress ?? ""),
-              subject: m?.subject ?? null,
-              preview: m?.preview ?? null,
-              receivedAt: m?.receivedAt ?? new Date().toISOString(),
-              isRead: m?.isRead ?? true,
-              hasAttachments: m?.hasAttachments ?? null,
-            })) as NativeMsg[]
-          );
-        })
+        .then((d) => setResults((d?.messages ?? []) as NativeMsg[]))
         .catch(() => setResults(null))
         .finally(() => setSearching(false));
     }, 400);
     return () => window.clearTimeout(t);
-  }, [q, addressId, messages]);
+  }, [q, mailbox.activeEmail]);
 
   const shownMessages = results ?? messages;
 
@@ -291,10 +247,10 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
     if (!mailbox.activeEmail || archiveBusyId) return;
     setArchiveBusyId(id);
     try {
-      await nativeFetch(`/api/messages/${encodeURIComponent(id)}`, {
+      await nativeFetch("/api/email/message/archive", {
         method: "PATCH",
         headers: manageHeaders(mailbox.activeEmail),
-        body: JSON.stringify({ archived: toArchived }),
+        body: JSON.stringify({ id, email: mailbox.activeEmail, archived: toArchived }),
       });
       queryClient.invalidateQueries({ queryKey: getGetInboxQueryKey({ email: mailbox.activeEmail }) });
       toast({ title: toArchived ? "Pesan diarsipkan" : "Pesan dikembalikan ke inbox" });
@@ -598,7 +554,8 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder={addressId ? "Cari pesan di server…" : "Cari pengirim, subjek, isi…"}
+              placeholder="Cari pesan di server…"
+              enterKeyHint="search"
               className="w-full rounded-xl bg-muted/60 border border-transparent focus:border-primary/40 outline-none pl-9 pr-9 py-2 text-[13px] placeholder:text-muted-foreground"
             />
             {searching && (
@@ -616,7 +573,7 @@ export function BerandaTab({ mailbox, onSelectMessage, onOpenAccount, onOpenPin 
           </div>
           {results !== null && (
             <p className="text-[11px] text-muted-foreground mt-1.5 px-0.5">
-              {results.length} hasil{addressId ? " dari server" : ""} untuk &ldquo;{q.trim()}&rdquo;
+              {results.length} hasil dari server untuk &ldquo;{q.trim()}&rdquo;
             </p>
           )}
         </div>
