@@ -42,10 +42,12 @@ function IconBtn({
 }
 
 interface ServerEmail {
+  id?: number | string | null;
   email: string;
   label?: string | null;
   expiresAt?: string | null;
   autoDeleteDays?: number | null;
+  favorite?: boolean | null;
 }
 
 // Pilihan retensi hapus pesan otomatis per alamat (hari). null = mati.
@@ -73,6 +75,9 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [expiryMap, setExpiryMap] = useState<Record<string, string>>({});
   // Nilai retensi tersimpan per alamat (null = mati), dari GET /api/user/emails.
   const [retentionMap, setRetentionMap] = useState<Record<string, number | null>>({});
+  // Favorit & id alamat dari server (hanya untuk akun login).
+  const [serverFavs, setServerFavs] = useState<Record<string, boolean>>({});
+  const [idMap, setIdMap] = useState<Record<string, number | string>>({});
   const [retentionBusy, setRetentionBusy] = useState<string | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -89,14 +94,20 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
         const labels: Record<string, string> = {};
         const expiries: Record<string, string> = {};
         const retentions: Record<string, number | null> = {};
+        const favs: Record<string, boolean> = {};
+        const ids: Record<string, number | string> = {};
         for (const e of d?.emails ?? []) {
           if (e?.email && e.label) labels[e.email] = e.label;
           if (e?.email && e.expiresAt) expiries[e.email] = e.expiresAt;
           if (e?.email) retentions[e.email] = e.autoDeleteDays ?? null;
+          if (e?.email && e.favorite === true) favs[e.email] = true;
+          if (e?.email && e.id != null) ids[e.email] = e.id;
         }
         setServerLabels(labels);
         setExpiryMap((prev) => ({ ...expiries, ...prev }));
         setRetentionMap(retentions);
+        setServerFavs(favs);
+        setIdMap(ids);
       })
       .catch(() => {});
     return () => {
@@ -115,20 +126,41 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
     return new Date(t + GUEST_LIFETIME_MS).toISOString();
   };
 
+  // Favorit: dari server bila login (sinkron), else favorit lokal per perangkat.
+  const isFav = (email: string) => serverFavs[email] ?? settings.favorites.includes(email);
+
   // Favorit selalu di atas, urutan lain dipertahankan.
   const sorted = [...mergedInboxList].sort((a, b) => {
-    const fa = settings.favorites.includes(a.email) ? 0 : 1;
-    const fb = settings.favorites.includes(b.email) ? 0 : 1;
+    const fa = isFav(a.email) ? 0 : 1;
+    const fb = isFav(b.email) ? 0 : 1;
     return fa - fb;
   });
 
-  const toggleFav = (email: string) => {
-    const has = settings.favorites.includes(email);
-    patch({
-      favorites: has
-        ? settings.favorites.filter((e) => e !== email)
-        : [email, ...settings.favorites],
-    });
+  const toggleFav = async (email: string) => {
+    const has = isFav(email);
+    const id = idMap[email];
+    if (id != null) {
+      try {
+        await nativeFetch(`/api/user/addresses/${encodeURIComponent(String(id))}`, {
+          method: "PATCH",
+          body: JSON.stringify({ favorite: !has }),
+        });
+        setServerFavs((prev) => ({ ...prev, [email]: !has }));
+      } catch (e) {
+        toast({
+          title: "Gagal mengubah favorit",
+          description: e instanceof Error ? e.message : "Coba lagi.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      patch({
+        favorites: has
+          ? settings.favorites.filter((e) => e !== email)
+          : [email, ...settings.favorites],
+      });
+    }
     buzz(10);
   };
 
@@ -348,7 +380,7 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
         )}
         {sorted.map((e) => {
           const on = e.email === activeEmail;
-          const fav = settings.favorites.includes(e.email);
+          const fav = isFav(e.email);
           const muted = settings.notifyOff.includes(e.email);
           const label = labelFor(e.email);
           const armed = confirmDestroy === e.email;
