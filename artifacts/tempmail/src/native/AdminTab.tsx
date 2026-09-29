@@ -1,7 +1,9 @@
 // Layar utama admin: sub-navigasi inline + dashboard statistik.
 import { useCallback, useEffect, useState } from "react";
 import {
+  Ban,
   Globe,
+  History,
   LayoutDashboard,
   Mail,
   Megaphone,
@@ -19,12 +21,16 @@ import { AdminBroadcast } from "./AdminBroadcast";
 import { AdminServer } from "./AdminServer";
 import { AdminMaintenance } from "./AdminMaintenance";
 import { AdminTraffic } from "./AdminTraffic";
+import { AdminActivityLogs } from "./AdminActivityLogs";
+import { AdminBlockedDomains } from "./AdminBlockedDomains";
 
 const SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "users", label: "Pengguna", icon: Users },
   { id: "domains", label: "Domain", icon: Globe },
   { id: "broadcast", label: "Broadcast", icon: Megaphone },
+  { id: "log", label: "Log", icon: History },
+  { id: "blokir", label: "Blokir", icon: Ban },
   { id: "server", label: "Server", icon: ServerIcon },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
 ] as const;
@@ -242,6 +248,8 @@ export function AdminTab() {
       {section === "users" && <AdminUsers />}
       {section === "domains" && <AdminDomains />}
       {section === "broadcast" && <AdminBroadcast />}
+      {section === "log" && <AdminActivityLogs />}
+      {section === "blokir" && <AdminBlockedDomains />}
       {section === "server" && <AdminServer />}
       {section === "maintenance" && <AdminMaintenance />}
     </div>
