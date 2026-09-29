@@ -42,7 +42,6 @@ function IconBtn({
 }
 
 interface ServerEmail {
-  id?: number | string | null;
   email: string;
   label?: string | null;
   expiresAt?: string | null;
@@ -75,9 +74,8 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   const [expiryMap, setExpiryMap] = useState<Record<string, string>>({});
   // Nilai retensi tersimpan per alamat (null = mati), dari GET /api/user/emails.
   const [retentionMap, setRetentionMap] = useState<Record<string, number | null>>({});
-  // Favorit & id alamat dari server (hanya untuk akun login).
+  // Favorit alamat dari server (hanya untuk akun login).
   const [serverFavs, setServerFavs] = useState<Record<string, boolean>>({});
-  const [idMap, setIdMap] = useState<Record<string, number | string>>({});
   const [retentionBusy, setRetentionBusy] = useState<string | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -86,7 +84,10 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
   // (fallback bila label lokal kosong). expiryMap juga diperbarui lokal
   // setiap kali perpanjangan berhasil.
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setServerFavs({});
+      return;
+    }
     let cancelled = false;
     nativeFetch<{ emails?: ServerEmail[] }>("/api/user/emails")
       .then((d) => {
@@ -95,19 +96,16 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
         const expiries: Record<string, string> = {};
         const retentions: Record<string, number | null> = {};
         const favs: Record<string, boolean> = {};
-        const ids: Record<string, number | string> = {};
         for (const e of d?.emails ?? []) {
           if (e?.email && e.label) labels[e.email] = e.label;
           if (e?.email && e.expiresAt) expiries[e.email] = e.expiresAt;
           if (e?.email) retentions[e.email] = e.autoDeleteDays ?? null;
           if (e?.email && e.favorite === true) favs[e.email] = true;
-          if (e?.email && e.id != null) ids[e.email] = e.id;
         }
         setServerLabels(labels);
         setExpiryMap((prev) => ({ ...expiries, ...prev }));
         setRetentionMap(retentions);
         setServerFavs(favs);
-        setIdMap(ids);
       })
       .catch(() => {});
     return () => {
@@ -138,10 +136,9 @@ export function AlamatTab({ mailbox }: { mailbox: NativeMailbox }) {
 
   const toggleFav = async (email: string) => {
     const has = isFav(email);
-    const id = idMap[email];
-    if (id != null) {
+    if (user) {
       try {
-        await nativeFetch(`/api/user/addresses/${encodeURIComponent(String(id))}`, {
+        await nativeFetch(`/api/user/addresses/${encodeURIComponent(email)}`, {
           method: "PATCH",
           body: JSON.stringify({ favorite: !has }),
         });
