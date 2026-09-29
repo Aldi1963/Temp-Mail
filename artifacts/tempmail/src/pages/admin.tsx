@@ -34,6 +34,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
+import AdminTrafficChart from "@/components/admin-traffic-chart";
 // Format timestamp (ISO UTC dari server) ke WIB secara eksplisit,
 // agar tidak tergantung zona waktu browser/VPS.
 function formatWib(iso: string): string {
@@ -1693,6 +1694,9 @@ export default function AdminPage() {
           {active === "stats" && (
             <>
               <PageHeader eyebrow="Analitik" title="Statistik" desc="Data penggunaan sistem secara keseluruhan." />
+
+              {/* Grafik trafik email masuk — SVG murni */}
+              <AdminTrafficChart />
 
               {/* Total — flat */}
               <section>
