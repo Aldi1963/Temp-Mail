@@ -499,29 +499,30 @@ export function LainnyaTab({ onOpenPage, onOpenLogin, pinFlash, registerSubMenuC
         </div>
       </div>
 
-      <div className="px-3 py-3 space-y-2.5">
-        {groups.map((g) => {
+      <div className="py-2">
+        {groups.map((g, i) => {
           const Icon = g.icon;
           return (
             <button
               key={g.key}
               onClick={() => setSubMenu(g.key)}
-              className="w-full flex items-center gap-3.5 rounded-3xl border border-border/70 bg-card px-4 py-4 active:bg-muted/60 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              className={cn(
+                "w-full flex items-center gap-3.5 px-5 py-3.5 active:bg-muted/60 text-left",
+                i < groups.length - 1 && "border-b border-border/60"
+              )}
             >
-              <span className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Icon className="h-5 w-5" />
-              </span>
+              <Icon className="h-[22px] w-[22px] text-primary shrink-0" />
               <span className="flex-1 min-w-0">
-                <span className="block text-[15px] font-extrabold">{g.label}</span>
+                <span className="block text-[15px] font-bold">{g.label}</span>
                 <span className="block text-[12px] text-muted-foreground truncate">{g.desc}</span>
               </span>
-              <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground/60 shrink-0" />
             </button>
           );
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground text-center pb-8">TempMail · v1.3.0</p>
+      <p className="text-[11px] text-muted-foreground text-center pt-4 pb-8">TempMail · v1.3.0</p>
     </div>
   );
 }
