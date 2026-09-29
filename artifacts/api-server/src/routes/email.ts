@@ -405,6 +405,7 @@ router.get("/message", async (req, res) => {
     htmlBody: m.htmlBody ?? undefined,
     receivedAt: m.receivedAt.toISOString(),
     isRead: m.isRead,
+    archived: m.archived,
     attachments,
   });
 });
