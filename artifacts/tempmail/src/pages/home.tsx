@@ -21,6 +21,7 @@ import {
   getGetInboxQueryKey,
   getGetEmailStatsQueryKey,
 } from "@aldi1963/temp-mail-api-client";
+import { scanInboxOtps, normalizeOtp } from "@/lib/otp";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface InboxEntry {
@@ -45,6 +46,7 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const prevTotalRef = useRef<number>(0);
+  const seenMsgIdsRef = useRef<Set<string>>(new Set());
 
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
     () => {
@@ -221,16 +223,29 @@ export default function Home() {
 
   const unreadCount = useMemo(() => inbox?.messages?.filter((m) => !m.isRead).length ?? 0, [inbox]);
 
-  // Tab title badge
-  useEffect(() => {
-    document.title = unreadCount > 0 ? `(${unreadCount}) TempMail` : "TempMail";
-    return () => { document.title = "TempMail"; };
-  }, [unreadCount]);
+  // OTP terbaru di inbox (untuk judul tab)
+  const latestOtp = useMemo(() => {
+    const otps = scanInboxOtps(inbox?.messages || []);
+    if (otps.length === 0) return null;
+    return otps.reduce((a, b) => (Date.parse(b.receivedAt) > Date.parse(a.receivedAt) ? b : a));
+  }, [inbox?.messages]);
 
-  // New mail notifications
+  // Tab title badge (+ kode OTP terbaru)
+  useEffect(() => {
+    const unread = unreadCount > 0 ? `(${unreadCount}) ` : "";
+    const otp = latestOtp ? `🔑 ${latestOtp.code} · ` : "";
+    document.title = `${otp}${unread}TempMail`;
+    return () => { document.title = "TempMail"; };
+  }, [unreadCount, latestOtp]);
+
+  // New mail notifications (+ notifikasi khusus OTP baru)
   useEffect(() => {
     if (inbox && inbox.total > prevTotalRef.current) {
       if (prevTotalRef.current > 0) {
+        // Cari pesan yang benar-benar baru (berdasar ID) untuk deteksi OTP
+        const fresh = (inbox.messages || []).filter((m) => !seenMsgIdsRef.current.has(m.id));
+        const freshOtps = scanInboxOtps(fresh);
+
         playChime();
         // Haptic feedback for mobile phones (vibrate)
         if (typeof window !== "undefined" && "vibrate" in navigator) {
@@ -238,20 +253,48 @@ export default function Home() {
             navigator.vibrate([100, 50, 100]);
           } catch {}
         }
-        toast({ title: "Email Baru Masuk", description: "Ada pesan baru di inbox Anda." });
 
-        if ("Notification" in window && Notification.permission === "granted") {
-          const newCount = inbox.total - prevTotalRef.current;
-          new Notification("TempMail — Email Baru!", {
-            body: newCount === 1 ? "Ada 1 email baru di inbox Anda." : `Ada ${newCount} email baru di inbox Anda.`,
-            icon: "/favicon.ico",
-            tag: "tempmail-new-email",
-          });
+        if (freshOtps.length > 0) {
+          // Ada OTP baru: toast + notifikasi desktop khusus (klik = salin kode)
+          const first = freshOtps[0];
+          const code = normalizeOtp(first.code);
+          toast({ title: "Kode OTP Baru!", description: `${code} — dari ${first.from || "pengirim"}`, duration: 6000 });
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              const n = new Notification(`🔑 Kode OTP: ${code}`, {
+                body: `Dari ${first.from || "pengirim"} — klik untuk menyalin`,
+                icon: "/favicon.ico",
+                tag: "tempmail-new-otp",
+              });
+              n.onclick = () => {
+                try { window.focus(); } catch {}
+                navigator.clipboard?.writeText(code).catch(() => {});
+                n.close();
+              };
+            } catch {}
+          }
+        } else {
+          toast({ title: "Email Baru Masuk", description: "Ada pesan baru di inbox Anda." });
+          if ("Notification" in window && Notification.permission === "granted") {
+            const newCount = inbox.total - prevTotalRef.current;
+            new Notification("TempMail — Email Baru!", {
+              body: newCount === 1 ? "Ada 1 email baru di inbox Anda." : `Ada ${newCount} email baru di inbox Anda.`,
+              icon: "/favicon.ico",
+              tag: "tempmail-new-email",
+            });
+          }
         }
       }
       prevTotalRef.current = inbox.total;
     } else if (inbox && inbox.total < prevTotalRef.current) {
       prevTotalRef.current = inbox.total;
+    }
+    // Catat semua ID yang sudah terlihat
+    if (inbox?.messages) {
+      for (const m of inbox.messages) seenMsgIdsRef.current.add(m.id);
+      if (seenMsgIdsRef.current.size > 300) {
+        seenMsgIdsRef.current = new Set((inbox.messages || []).map((m) => m.id));
+      }
     }
   }, [inbox?.total, playChime, toast]);
 
@@ -259,6 +302,7 @@ export default function Home() {
   useEffect(() => {
     setSelectedMessageId(null);
     prevTotalRef.current = 0;
+    seenMsgIdsRef.current = new Set();
   }, [activeEmail]);
 
   const handleRefreshInbox = useCallback(() => {

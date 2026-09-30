@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import {
   ArrowLeft, Download, FileText, Paperclip, FileDown, ShieldBan, ShieldAlert,
-  Copy, Check, FileImage, FileVideo, FileAudio, FileArchive, FileCode, File,
+  Copy, Check, CheckCheck, FileImage, FileVideo, FileAudio, FileArchive, FileCode, File,
   KeyRound, ExternalLink, Globe, Code, Printer, Forward, Share2
 } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -26,6 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { extractOtp, normalizeOtp, isOtpUsed, setOtpUsed } from "@/lib/otp";
+import { OtpCountdown } from "@/components/otp-countdown";
 
 interface MessageViewerProps {
   messageId: string;
@@ -130,25 +132,11 @@ function formatFileSize(bytes: number): string {
 }
 
 // Regex detector for OTP codes and verification links
-function extractOtpAndLinks(text: string, html: string) {
-  const combined = `${text} ${html.replace(/<[^>]*>/g, " ")}`;
-  
-  // Detect OTP (4-8 digits, or patterns like 123-456, G-123456)
-  const otpPatterns = [
-    /\b(?:code|kode|otp|pin|verification|verifikasi|token|password|passcode)\b[^\d]{1,25}(\d{4,8})\b/i,
-    /\b([0-9]{3}[-\s][0-9]{3})\b/,
-    /\b(?:G-|FB-)(\d{5,6})\b/i,
-    /\b(\d{6})\b/
-  ];
+// Deteksi OTP memakai lib bersama (pola diperluas: spasi/strip, alfanumerik, subjek)
+function extractOtpAndLinks(subject: string, text: string, html: string) {
+  const combined = `${subject} ${text} ${html.replace(/<[^>]*>/g, " ")}`;
 
-  let detectedOtp: string | null = null;
-  for (const pattern of otpPatterns) {
-    const match = combined.match(pattern);
-    if (match) {
-      detectedOtp = match[1] || match[0];
-      break;
-    }
-  }
+  const detectedOtp = extractOtp(combined);
 
   // Detect verify/confirm URL
   let detectedVerifyUrl: string | null = null;
@@ -259,6 +247,7 @@ export function MessageViewer({ messageId, email, onBack }: MessageViewerProps) 
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [otpCopied, setOtpCopied] = useState(false);
+  const [otpUsedState, setOtpUsedState] = useState(false);
   const [viewMode, setViewMode] = useState<"html" | "text">("html");
 
   const { data: message, isLoading, isError } = useGetMessage(
@@ -388,8 +377,13 @@ ${parsedContent.html}
 
   const { detectedOtp, detectedVerifyUrl } = useMemo(() => {
     if (!message) return { detectedOtp: null, detectedVerifyUrl: null };
-    return extractOtpAndLinks(parsedContent.text, parsedContent.html || "");
+    return extractOtpAndLinks(message.subject || "", parsedContent.text, parsedContent.html || "");
   }, [message, parsedContent]);
+
+  // Sinkronkan status "terpakai" setiap ganti pesan/kode
+  useEffect(() => {
+    setOtpUsedState(detectedOtp ? isOtpUsed(messageId, detectedOtp) : false);
+  }, [messageId, detectedOtp]);
 
   const handleBlock = (pattern: string, label: string) => {
     blockMutation.mutate(
@@ -425,9 +419,10 @@ ${parsedContent.html}
   };
 
   const copyOtp = (otp: string) => {
-    navigator.clipboard.writeText(otp);
+    const normalized = normalizeOtp(otp);
+    navigator.clipboard.writeText(normalized);
     setOtpCopied(true);
-    toast({ title: "Kode OTP Tersalin!", description: otp, duration: 2500 });
+    toast({ title: "Kode OTP Tersalin!", description: normalized, duration: 2500 });
     setTimeout(() => setOtpCopied(false), 2000);
   };
 
@@ -588,13 +583,14 @@ ${parsedContent.html}
               <div className="p-1.5 rounded-md bg-primary/10 text-primary">
                 <KeyRound className="h-4 w-4" />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Kode OTP:
                 </span>
                 <span className="font-mono text-base font-extrabold text-foreground tracking-widest bg-background px-2.5 py-0.5 rounded border border-primary/30 select-all">
                   {detectedOtp}
                 </span>
+                {message?.receivedAt && <OtpCountdown receivedAt={message.receivedAt} />}
                 <Button
                   size="sm"
                   variant="outline"
@@ -603,6 +599,21 @@ ${parsedContent.html}
                 >
                   {otpCopied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                   {otpCopied ? "Tersalin" : "Salin Kode"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const next = !otpUsedState;
+                    setOtpUsed(messageId, detectedOtp!, next);
+                    setOtpUsedState(next);
+                    toast({ title: next ? "Ditandai terpakai" : "Tanda terpakai dihapus", duration: 1500 });
+                  }}
+                  className="h-7 px-2 text-xs gap-1 active:scale-95"
+                  title="Tandai kode ini sudah dipakai"
+                >
+                  {otpUsedState ? <CheckCheck className="h-3 w-3 text-green-500" /> : <Check className="h-3 w-3" />}
+                  {otpUsedState ? "Terpakai" : "Tandai terpakai"}
                 </Button>
               </div>
             </div>

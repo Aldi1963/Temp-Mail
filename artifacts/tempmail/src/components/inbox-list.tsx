@@ -53,14 +53,8 @@ interface InboxListProps {
 type FilterType = "all" | "unread" | "read";
 type SortType = "newest" | "oldest" | "sender";
 
-// Quick detector for OTP in preview/subject
-function extractQuickOtp(text: string): string | null {
-  const match = text.match(/\b(?:code|kode|otp|pin|verifikasi|token|verification)[^\d]{1,20}(\d{4,8})\b/i)
-    || text.match(/\b([0-9]{3}[-\s][0-9]{3})\b/)
-    || text.match(/\b(?:G-|FB-)(\d{5,6})\b/i)
-    || text.match(/\b(\d{6})\b/);
-  return match ? (match[1] || match[0]) : null;
-}
+import { extractOtpFromSummary } from "@/lib/otp";
+import { OtpHistory } from "@/components/otp-history";
 
 // Clean preview snippet from MIME junk
 function cleanPreviewText(raw: string): string {
@@ -132,7 +126,7 @@ function SwipeableInboxRow({
   const rowW = useRef(0);
 
   const { name, letter, colorClass } = getSenderInfo(msg.from);
-  const inlineOtp = extractQuickOtp(`${msg.subject} ${msg.preview}`);
+  const inlineOtp = extractOtpFromSummary(msg.subject, msg.preview);
   const formattedDate = formatGmailDate(msg.receivedAt);
   const cleanPreview = cleanPreviewText(msg.preview);
 
@@ -419,9 +413,13 @@ export function InboxList({
 
   const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
 
+  const [otpOnly, setOtpOnly] = useState(false);
+
   const filteredMessages = useMemo(() => {
-    return [...messages].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
-  }, [messages]);
+    const sorted = [...messages].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
+    if (!otpOnly) return sorted;
+    return sorted.filter((m) => extractOtpFromSummary(m.subject, m.preview));
+  }, [messages, otpOnly]);
 
   const handleRefresh = async () => {
     if (!onRefresh) return;
@@ -656,14 +654,22 @@ export function InboxList({
           <div className="flex items-center gap-0.5 rounded-full bg-muted/70 p-1">
             <button
               type="button"
-              onClick={() => setShowArchived(false)}
-              className={`px-3 h-7 rounded-full text-xs font-bold transition-colors cursor-pointer ${!showArchived ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setShowArchived(false); setOtpOnly(false); }}
+              className={`px-3 h-7 rounded-full text-xs font-bold transition-colors cursor-pointer ${!showArchived && !otpOnly ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               Kotak Masuk
             </button>
             <button
               type="button"
-              onClick={() => setShowArchived(true)}
+              onClick={() => { setShowArchived(false); setOtpOnly(true); }}
+              className={`px-3 h-7 rounded-full text-xs font-bold transition-colors cursor-pointer ${otpOnly ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              title="Hanya pesan berisi kode OTP"
+            >
+              OTP
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowArchived(true); setOtpOnly(false); }}
               className={`px-3 h-7 rounded-full text-xs font-bold transition-colors cursor-pointer ${showArchived ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               Arsip
@@ -710,6 +716,9 @@ export function InboxList({
           >
             <RefreshCw className={`h-3.5 w-3.5 transition-transform ${isRefreshing ? "animate-spin" : ""}`} />
           </Button>
+          {!showArchived && messages.length > 0 && (
+            <OtpHistory messages={messages} />
+          )}
         </div>
       </div>
 
